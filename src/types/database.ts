@@ -16,6 +16,7 @@ export interface Database {
           avatar_url: string | null
           created_at: string
           updated_at: string
+          is_system_admin: boolean | null
         }
         Insert: {
           id: string
@@ -23,6 +24,7 @@ export interface Database {
           avatar_url?: string | null
           created_at?: string
           updated_at?: string
+          is_system_admin?: boolean | null
         }
         Update: {
           id?: string
@@ -30,6 +32,7 @@ export interface Database {
           avatar_url?: string | null
           created_at?: string
           updated_at?: string
+          is_system_admin?: boolean | null
         }
         Relationships: [
           {
@@ -48,10 +51,14 @@ export interface Database {
           season: string
           api_football_id: number | null
           logo_url: string | null
+          country: string | null
+          type: 'League' | 'Cup' | null
           start_date: string
           end_date: string
           status: 'upcoming' | 'ongoing' | 'finished' | null
           created_at: string
+          updated_at: string | null
+          last_fixture_sync_at: string | null
         }
         Insert: {
           id?: string
@@ -59,10 +66,13 @@ export interface Database {
           season: string
           api_football_id?: number | null
           logo_url?: string | null
+          country?: string | null
+          type?: 'League' | 'Cup' | null
           start_date: string
           end_date: string
           status?: 'upcoming' | 'ongoing' | 'finished' | null
           created_at?: string
+          last_fixture_sync_at?: string | null
         }
         Update: {
           id?: string
@@ -70,10 +80,14 @@ export interface Database {
           season?: string
           api_football_id?: number | null
           logo_url?: string | null
+          country?: string | null
+          type?: 'League' | 'Cup' | null
           start_date?: string
           end_date?: string
           status?: 'upcoming' | 'ongoing' | 'finished' | null
           created_at?: string
+          updated_at?: string | null
+          last_fixture_sync_at?: string | null
         }
         Relationships: []
       }
@@ -116,10 +130,13 @@ export interface Database {
           away_team_id: string | null
           home_goals: number | null
           away_goals: number | null
+          home_penalty_goals: number | null
+          away_penalty_goals: number | null
           status: 'NS' | '1H' | 'HT' | '2H' | 'ET' | 'P' | 'FT' | 'AFT' | 'CANC' | null
           round: string | null
           scheduled_at: string
           venue: string | null
+          points_calculated: boolean | null
           created_at: string
         }
         Insert: {
@@ -130,10 +147,13 @@ export interface Database {
           away_team_id?: string | null
           home_goals?: number | null
           away_goals?: number | null
+          home_penalty_goals?: number | null
+          away_penalty_goals?: number | null
           status?: 'NS' | '1H' | 'HT' | '2H' | 'ET' | 'P' | 'FT' | 'AFT' | 'CANC' | null
           round?: string | null
           scheduled_at: string
           venue?: string | null
+          points_calculated?: boolean | null
           created_at?: string
         }
         Update: {
@@ -144,10 +164,13 @@ export interface Database {
           away_team_id?: string | null
           home_goals?: number | null
           away_goals?: number | null
+          home_penalty_goals?: number | null
+          away_penalty_goals?: number | null
           status?: 'NS' | '1H' | 'HT' | '2H' | 'ET' | 'P' | 'FT' | 'AFT' | 'CANC' | null
           round?: string | null
           scheduled_at?: string
           venue?: string | null
+          points_calculated?: boolean | null
           created_at?: string
         }
         Relationships: [
@@ -186,6 +209,7 @@ export interface Database {
           bet_deadline_minutes: number | null
           point_system: Json | null
           wildcards: Json | null
+          special_point_system: Json | null
           created_at: string
           started_at: string | null
         }
@@ -200,6 +224,7 @@ export interface Database {
           bet_deadline_minutes?: number | null
           point_system?: Json | null
           wildcards?: Json | null
+          special_point_system?: Json | null
           created_at?: string
           started_at?: string | null
         }
@@ -214,6 +239,7 @@ export interface Database {
           bet_deadline_minutes?: number | null
           point_system?: Json | null
           wildcards?: Json | null
+          special_point_system?: Json | null
           created_at?: string
           started_at?: string | null
         }
@@ -345,7 +371,7 @@ export interface Database {
           id: string
           user_id: string
           polla_id: string
-          type: 'champion' | 'finalist' | 'third_place' | 'qualified' | 'quarterfinalist' | 'semifinalist' | 'top_scorer'
+          type: 'champion' | 'finalist' | 'third_place' | 'least_goals_against' | 'worst_team' | 'top_scorer_team'
           team_id: string | null
           player_name: string | null
           points: number | null
@@ -355,7 +381,7 @@ export interface Database {
           id?: string
           user_id: string
           polla_id: string
-          type: 'champion' | 'finalist' | 'third_place' | 'qualified' | 'quarterfinalist' | 'semifinalist' | 'top_scorer'
+          type: 'champion' | 'finalist' | 'third_place' | 'least_goals_against' | 'worst_team' | 'top_scorer_team'
           team_id?: string | null
           player_name?: string | null
           points?: number | null
@@ -365,7 +391,7 @@ export interface Database {
           id?: string
           user_id?: string
           polla_id?: string
-          type?: 'champion' | 'finalist' | 'third_place' | 'qualified' | 'quarterfinalist' | 'semifinalist' | 'top_scorer'
+          type?: 'champion' | 'finalist' | 'third_place' | 'least_goals_against' | 'worst_team' | 'top_scorer_team'
           team_id?: string | null
           player_name?: string | null
           points?: number | null
@@ -388,6 +414,97 @@ export interface Database {
           },
           {
             foreignKeyName: "special_predictions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      tournament_special_results: {
+        Row: {
+          id: string
+          tournament_id: string
+          type: 'champion' | 'finalist' | 'third_place' | 'least_goals_against' | 'worst_team' | 'top_scorer_team'
+          team_id: string | null
+          created_at: string
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          tournament_id: string
+          type: 'champion' | 'finalist' | 'third_place' | 'least_goals_against' | 'worst_team' | 'top_scorer_team'
+          team_id?: string | null
+          created_at?: string
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          tournament_id?: string
+          type?: 'champion' | 'finalist' | 'third_place' | 'least_goals_against' | 'worst_team' | 'top_scorer_team'
+          team_id?: string | null
+          created_at?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tournament_special_results_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_special_results_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      match_points: {
+        Row: {
+          id: string
+          polla_id: string
+          user_id: string
+          match_id: string
+          points: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          polla_id: string
+          user_id: string
+          match_id: string
+          points?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          polla_id?: string
+          user_id?: string
+          match_id?: string
+          points?: number
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "match_points_match_id_fkey"
+            columns: ["match_id"]
+            isOneToOne: false
+            referencedRelation: "matches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "match_points_polla_id_fkey"
+            columns: ["polla_id"]
+            isOneToOne: false
+            referencedRelation: "pollas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "match_points_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
@@ -447,14 +564,106 @@ export interface Database {
           }
         ]
       }
+      api_usage_logs: {
+        Row: {
+          id: string
+          user_id: string | null
+          identifier: string
+          action: string
+          metadata: unknown | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id?: string | null
+          identifier?: string
+          action?: string
+          metadata?: unknown | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string | null
+          identifier?: string
+          action?: string
+          metadata?: unknown | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "api_usage_logs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      system_settings: {
+        Row: {
+          key: string
+          value: unknown
+          description: string | null
+          category: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          key: string
+          value: unknown
+          description?: string | null
+          category?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          key?: string
+          value?: unknown
+          description?: string | null
+          category?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "system_settings_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
+      get_server_time: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
       update_updated_at_column: {
         Args: Record<PropertyKey, never>
         Returns: unknown
+      }
+      check_rate_limit: {
+        Args: {
+          p_identifier: string
+          p_action: string
+          p_max_count: number
+          p_interval_minutes: number
+        }
+        Returns: boolean
+      }
+      log_api_usage: {
+        Args: {
+          p_identifier: string
+          p_action: string
+          p_user_id?: string | null
+          p_metadata?: unknown | null
+        }
+        Returns: void
       }
     }
   }

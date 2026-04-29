@@ -6,31 +6,34 @@ export default async function OnboardingPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  if (!user) {
-    redirect('/login');
-  }
+  if (!user) redirect('/login');
 
-  // Check if profile already exists
   const { data: profile } = await supabase
     .from('profiles')
     .select('alias')
     .eq('id', user.id)
-    .single();
+    .maybeSingle();
 
-  if (profile?.alias) {
-    redirect('/pollas');
-  }
+  if (profile?.alias) redirect('/pollas');
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-4">
-      <div className="w-full max-w-sm space-y-6">
-        <div className="space-y-2 text-center">
-          <h1 className="text-3xl font-bold">¡Casi listo!</h1>
-          <p className="text-muted-foreground">
-            Elige un alias para que tus amigos te reconozcan en las pollas.
-          </p>
+    <main className="flex min-h-screen flex-col items-center justify-center bg-background px-4 py-12">
+      <div className="w-full max-w-sm">
+        {/* Logo */}
+        <div className="mb-8 text-center">
+          <span className="text-5xl">⚽</span>
+          <h2 className="mt-2 text-2xl font-black text-[#0d3d1f]">Golazo</h2>
         </div>
-        <OnboardingForm userId={user.id} email={user.email ?? ''} />
+
+        <div className="rounded-2xl bg-card border border-border/50 shadow-sm p-6">
+          <div className="mb-6 text-center">
+            <h1 className="text-2xl font-black">¡Casi listo!</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Elegí un alias para que tus amigos te reconozcan en las pollas.
+            </p>
+          </div>
+          <OnboardingForm email={user.email ?? ''} />
+        </div>
       </div>
     </main>
   );

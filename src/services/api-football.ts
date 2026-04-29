@@ -45,13 +45,29 @@ export async function getFixtures(leagueId: number, season: number) {
   return fetchFootball('fixtures', { league: leagueId, season });
 }
 
-export async function getLiveFixtures(leagueId: number) {
-  return fetchFootball('fixtures', {
-    league: leagueId,
-    live: 'all',
-  });
+export async function getLiveFixtures(leagueId?: number) {
+  const opts: ApiOptions = { live: 'all' };
+  if (leagueId) opts.league = leagueId;
+  return fetchFootball('fixtures', opts);
 }
 
 export async function getFixtureById(fixtureId: number) {
   return fetchFootball('fixtures', { id: fixtureId });
+}
+
+export async function getFixturesByIds(fixtureIds: number[]) {
+  // API-Football permite hasta 10 IDs separados por guión
+  const batches: number[][] = [];
+  for (let i = 0; i < fixtureIds.length; i += 10) {
+    batches.push(fixtureIds.slice(i, i + 10));
+  }
+
+  const results: any[] = [];
+  for (const batch of batches) {
+    const data = await fetchFootball('fixtures', { ids: batch.join('-') });
+    if (data?.response) {
+      results.push(...data.response);
+    }
+  }
+  return { response: results };
 }
