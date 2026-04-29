@@ -27,7 +27,8 @@ export function LoginForm({ redirectTo }: LoginFormProps) {
     setIsLoading('google');
     setError(null);
     const supabase = createClient();
-    const callbackUrl = new URL('/api/auth/callback', window.location.origin);
+    const base = process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
+    const callbackUrl = new URL('/api/auth/callback', base);
     if (redirectTo) {
       callbackUrl.searchParams.set('redirectTo', redirectTo);
     }
@@ -47,7 +48,8 @@ export function LoginForm({ redirectTo }: LoginFormProps) {
     setError(null);
     const email = (new FormData(e.currentTarget).get('email') as string).trim();
     const supabase = createClient();
-    const callbackUrl = new URL('/api/auth/callback', window.location.origin);
+    const base = process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
+    const callbackUrl = new URL('/api/auth/callback', base);
     if (redirectTo) {
       callbackUrl.searchParams.set('redirectTo', redirectTo);
     }

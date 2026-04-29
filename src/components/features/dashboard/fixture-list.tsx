@@ -269,22 +269,26 @@ export function FixtureList({ pollaId, matches, predictions, betDeadlineMinutes,
     return (
       <div
         key={match.id}
-        className="grid grid-cols-[1fr_90px_1fr_90px] gap-3 items-center rounded-xl border bg-card p-4"
+        className="grid grid-cols-[1fr_auto_1fr] gap-2 items-center rounded-xl border bg-card p-3 sm:p-4"
       >
-        {/* Col 1: Equipo local */}
-        <div className={`flex items-center justify-end gap-2 min-w-0 ${homeWon ? 'text-green-700' : isDraw ? 'text-amber-700' : ''}`}>
-          <span className="font-semibold truncate">{match.home_team?.name || 'Local'}</span>
-          {homeWon && <span className="text-lg shrink-0">✓</span>}
-          {match.home_team?.logo_url && (
-            <img src={match.home_team.logo_url} alt="" className="h-6 w-6 object-contain shrink-0" />
+        {/* Col 1: Equipo local — logo + nombre apilados */}
+        <div className={`flex flex-col items-center gap-1 text-center ${homeWon ? 'text-green-700' : isDraw ? 'text-amber-700' : ''}`}>
+          {match.home_team?.logo_url ? (
+            <img src={match.home_team.logo_url} alt="" className="h-8 w-8 object-contain" />
+          ) : (
+            <div className="h-8 w-8 rounded-full bg-muted" />
           )}
+          <span className="text-xs font-semibold leading-tight break-words w-full">
+            {match.home_team?.name || 'Local'}
+          </span>
+          {homeWon && <span className="text-xs text-green-600 font-bold">✓</span>}
         </div>
 
-        {/* Col 2: Centro (marcador/vs + hora + round) */}
-        <div className="flex flex-col items-center">
+        {/* Col 2: Centro — marcador/vs + hora + round + botón */}
+        <div className="flex flex-col items-center gap-1 px-2 min-w-[80px]">
           {isFinished || isLive ? (
             <>
-              <span className="text-lg font-black leading-tight">
+              <span className="text-lg font-black leading-tight tabular-nums">
                 {match.home_goals ?? '-'} : {match.away_goals ?? '-'}
               </span>
               {hasPenalties && (
@@ -294,39 +298,25 @@ export function FixtureList({ pollaId, matches, predictions, betDeadlineMinutes,
               )}
             </>
           ) : isOverdue ? (
-            <>
-              <span className="text-xs text-amber-600 font-semibold leading-tight">Pendiente</span>
-              <span className="text-[10px] text-muted-foreground">vs</span>
-            </>
+            <span className="text-xs text-amber-600 font-semibold">Pendiente</span>
           ) : (
-            <span className="text-xs text-muted-foreground leading-tight">vs</span>
+            <span className="text-sm font-bold text-muted-foreground">vs</span>
           )}
           {isLive && (
-            <span className="text-[10px] font-bold text-red-500 leading-tight">EN VIVO</span>
+            <span className="text-[10px] font-bold text-red-500">EN VIVO</span>
           )}
-          {isDraw && !hasPenalties && (
-            <span className="text-[10px] font-bold text-amber-600 leading-tight">Empate</span>
+          {isDraw && !hasPenalties && isFinished && (
+            <span className="text-[10px] font-bold text-amber-600">Empate</span>
           )}
-          <div className="flex items-center gap-1 text-[10px] text-muted-foreground mt-0.5">
-            <Clock className="h-3 w-3" />
+          <div className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
+            <Clock className="h-2.5 w-2.5" />
             {formatTime(match.scheduled_at)}
           </div>
           {match.round && (
-            <span className="text-[10px] text-muted-foreground whitespace-normal break-words leading-tight text-center">{match.round}</span>
+            <span className="text-[10px] text-muted-foreground text-center leading-tight max-w-[90px] break-words">{match.round}</span>
           )}
-        </div>
-
-        {/* Col 3: Equipo visitante */}
-        <div className={`flex items-center gap-2 min-w-0 ${awayWon ? 'text-green-700' : isDraw ? 'text-amber-700' : ''}`}>
-          {match.away_team?.logo_url && (
-            <img src={match.away_team.logo_url} alt="" className="h-6 w-6 object-contain shrink-0" />
-          )}
-          {awayWon && <span className="text-lg shrink-0">✓</span>}
-          <span className="font-semibold truncate">{match.away_team?.name || 'Visitante'}</span>
-        </div>
-
-        {/* Col 4: Botón / estado */}
-        <div className="flex justify-end items-center">
+          {/* Botón centrado debajo */}
+          <div className="mt-1">
           {pred ? (
             <Link
               href={`/pollas/${pollaId}/prediccion/${match.id}`}
@@ -338,12 +328,12 @@ export function FixtureList({ pollaId, matches, predictions, betDeadlineMinutes,
               <Button
                 variant={open ? 'default' : 'outline'}
                 size="sm"
-                className={`gap-1 shrink-0 w-[90px] justify-center ${open ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : ''}`}
+                className={`gap-1 text-xs px-2 h-7 ${open ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : ''}`}
               >
                 {open ? <Edit3 className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
                 {pred.home_goals}-{pred.away_goals}
                 {pred.wildcard_used && (
-                  <span className={`ml-1 rounded-full px-1 py-px text-[10px] font-bold ${pred.wildcard_used === 'x3' ? 'bg-purple-500 text-white' : 'bg-amber-500 text-white'}`}>
+                  <span className={`rounded-full px-1 text-[9px] font-bold ${pred.wildcard_used === 'x3' ? 'bg-purple-500 text-white' : 'bg-amber-500 text-white'}`}>
                     {pred.wildcard_used.toUpperCase()}
                   </span>
                 )}
@@ -357,16 +347,31 @@ export function FixtureList({ pollaId, matches, predictions, betDeadlineMinutes,
                 sessionStorage.setItem('fixtureReturnUrl', window.location.pathname + window.location.search);
               }}
             >
-              <Button size="sm" className="bg-[#0d3d1f] hover:bg-[#0d3d1f]/90 w-[90px] justify-center">
+              <Button size="sm" className="bg-[#0d3d1f] hover:bg-[#0d3d1f]/90 text-xs px-3 h-7">
                 Predecir
               </Button>
             </Link>
           ) : (
-            <span className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground w-[90px] text-center block">
+            <span className="rounded-md bg-muted px-2 py-1 text-[10px] text-muted-foreground">
               Cerrado
             </span>
           )}
+          </div>
         </div>
+
+        {/* Col 3: Equipo visitante — logo + nombre apilados */}
+        <div className={`flex flex-col items-center gap-1 text-center ${awayWon ? 'text-green-700' : isDraw ? 'text-amber-700' : ''}`}>
+          {match.away_team?.logo_url ? (
+            <img src={match.away_team.logo_url} alt="" className="h-8 w-8 object-contain" />
+          ) : (
+            <div className="h-8 w-8 rounded-full bg-muted" />
+          )}
+          <span className="text-xs font-semibold leading-tight break-words w-full">
+            {match.away_team?.name || 'Visitante'}
+          </span>
+          {awayWon && <span className="text-xs text-green-600 font-bold">✓</span>}
+        </div>
+
       </div>
     );
   }

@@ -83,10 +83,12 @@ export function PredictionForm({
           <label className="text-xs font-medium text-muted-foreground">Local</label>
           <input
             type="number"
+            inputMode="numeric"
             min={0}
             max={20}
             value={homeGoals}
-            onChange={(e) => setHomeGoals(parseInt(e.target.value) || 0)}
+            onChange={(e) => setHomeGoals(Math.max(0, parseInt(e.target.value) || 0))}
+            onFocus={(e) => e.target.select()}
             className="h-16 w-20 rounded-xl border bg-background text-center text-3xl font-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
         </div>
@@ -97,10 +99,12 @@ export function PredictionForm({
           <label className="text-xs font-medium text-muted-foreground">Visitante</label>
           <input
             type="number"
+            inputMode="numeric"
             min={0}
             max={20}
             value={awayGoals}
-            onChange={(e) => setAwayGoals(parseInt(e.target.value) || 0)}
+            onChange={(e) => setAwayGoals(Math.max(0, parseInt(e.target.value) || 0))}
+            onFocus={(e) => e.target.select()}
             className="h-16 w-20 rounded-xl border bg-background text-center text-3xl font-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
         </div>
