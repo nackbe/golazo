@@ -44,6 +44,19 @@
 
 ## 3. Estado Actual del Proyecto (actualizado)
 
+### Deploy — EN PRODUCCIÓN
+- **URL producción:** https://golazo-puce.vercel.app
+- **Repo GitHub:** https://github.com/nackbe/golazo (privado)
+- **Auto-deploy:** configurar en Vercel Settings → Git → conectar repo `nackbe/golazo` (pendiente si aún no está hecho)
+- **Env vars en Vercel:** todas seteadas (SUPABASE, API_FOOTBALL, CRON_SECRET, APP_URL)
+- **Supabase Auth:** Site URL y redirect URL apuntando a producción
+- **Pendiente:** configurar cron-job.org → `POST https://golazo-puce.vercel.app/api/sync` cada 2 min con `Authorization: Bearer CRON_SECRET`
+
+### Fixes post-deploy aplicados
+- OAuth móvil: callback usa `NEXT_PUBLIC_APP_URL` en lugar de `window.location.origin` (evita redirect a localhost)
+- Inputs de predicción: `onFocus → select()` para reemplazar el 0 directamente al tipear
+- Fixture card: rediseño 3 columnas — logo+nombre apilados verticalmente, nombres completos sin truncar, botón centrado bajo el marcador
+
 ### Flujo de autenticación — FUNCIONANDO
 - Google OAuth configurado y operativo.
 - Trigger en DB crea perfil vacío (`alias = NULL`) al registrar usuario.
