@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getLiveFixtures, getFixturesByIds, getFixtures } from '@/services/api-football';
 import { calculateMatchPoints, updateTournamentSpecialResults, calculateSpecialPoints } from '@/lib/sync/calculate-points';
+import { generateRandomPredictionsForMatch } from '@/lib/sync/random-predictions';
 import { getSetting } from '@/lib/settings';
 
 const VALID_STATUS_PROGRESSION = [
@@ -221,6 +222,31 @@ async function runSync() {
       }
     } catch (err: any) {
       results.errors.push(`Overdue fixtures error: ${err.message}`);
+    }
+  }
+
+  // ─────────────────────────────────────────
+  // 5b. Generar predicciones aleatorias para olvidadizos
+  // ─────────────────────────────────────────
+  // Para partidos overdue (plazo ya cerró), generar predicciones
+  // automáticas en pollas que tengan auto_random_prediction = true.
+
+  for (const match of overdueMatches || []) {
+    if (!match.tournament_id) continue;
+
+    const { data: pollasWithRandom } = await admin
+      .from('pollas')
+      .select('id')
+      .eq('tournament_id', match.tournament_id)
+      .eq('auto_random_prediction', true)
+      .in('status', ['active', 'open']);
+
+    for (const polla of pollasWithRandom || []) {
+      try {
+        await generateRandomPredictionsForMatch(match.id, polla.id);
+      } catch (err: any) {
+        results.errors.push(`Random predictions ${match.id}/${polla.id}: ${err.message}`);
+      }
     }
   }
 

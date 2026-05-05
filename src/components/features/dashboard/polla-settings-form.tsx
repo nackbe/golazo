@@ -46,6 +46,7 @@ interface Polla {
   status: string;
   auto_approve: boolean;
   admin_plays: boolean;
+  auto_random_prediction: boolean;
   bet_deadline_minutes: number;
   point_system: PointSystem | null;
   wildcards: WildcardEntry[] | null;
@@ -159,6 +160,7 @@ export function PollaSettingsForm({ polla }: { polla: Polla }) {
   const [saved, setSaved] = useState(false);
   const [autoApprove, setAutoApprove] = useState(polla.auto_approve);
   const [adminPlays, setAdminPlays] = useState(polla.admin_plays);
+  const [autoRandomPrediction, setAutoRandomPrediction] = useState(polla.auto_random_prediction);
 
   const isLocked = polla.status === 'active' || polla.status === 'finished';
 
@@ -169,6 +171,7 @@ export function PollaSettingsForm({ polla }: { polla: Polla }) {
     const fd = new FormData(e.currentTarget);
     fd.set('auto_approve', autoApprove ? 'true' : 'false');
     fd.set('admin_plays', adminPlays ? 'true' : 'false');
+    fd.set('auto_random_prediction', autoRandomPrediction ? 'true' : 'false');
     startTransition(async () => {
       const result = await updatePollaSettings(polla.id, fd);
       if (result?.error) setError(result.error);
@@ -272,6 +275,18 @@ export function PollaSettingsForm({ polla }: { polla: Polla }) {
               {adminPlays
                 ? 'Tus predicciones cuentan y aparecés en el ranking junto a los demás jugadores.'
                 : 'No aparecés en el ranking ni se calculan tus puntos. Solo administrás la polla.'}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-start gap-4 rounded-xl border border-border p-4">
+          <Toggle value={autoRandomPrediction} onChange={setAutoRandomPrediction} disabled={isPending} />
+          <div>
+            <p className="text-sm font-semibold">Predicción automática para olvidadizos</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {autoRandomPrediction
+                ? 'Si un jugador no predice antes del cierre, el sistema le asigna un marcador aleatorio entre 0 y 10.'
+                : 'Los jugadores que no predicen quedan sin puntos en ese partido.'}
             </p>
           </div>
         </div>

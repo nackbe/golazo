@@ -210,6 +210,7 @@ export interface Database {
           status: 'draft' | 'open' | 'active' | 'finished' | null
           auto_approve: boolean | null
           admin_plays: boolean | null
+          auto_random_prediction: boolean | null
           bet_deadline_minutes: number | null
           point_system: Json | null
           wildcards: Json | null
@@ -226,6 +227,7 @@ export interface Database {
           status?: 'draft' | 'open' | 'active' | 'finished' | null
           auto_approve?: boolean | null
           admin_plays?: boolean | null
+          auto_random_prediction?: boolean | null
           bet_deadline_minutes?: number | null
           point_system?: Json | null
           wildcards?: Json | null
@@ -242,6 +244,7 @@ export interface Database {
           status?: 'draft' | 'open' | 'active' | 'finished' | null
           auto_approve?: boolean | null
           admin_plays?: boolean | null
+          auto_random_prediction?: boolean | null
           bet_deadline_minutes?: number | null
           point_system?: Json | null
           wildcards?: Json | null
