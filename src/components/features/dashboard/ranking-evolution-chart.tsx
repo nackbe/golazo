@@ -20,32 +20,31 @@ interface Props {
 }
 
 const PALETTE = [
-  '#0d3d1f', // verde oscuro (primario)
-  '#d97706', // ámbar
-  '#2563eb', // azul
-  '#dc2626', // rojo
-  '#7c3aed', // violeta
-  '#0891b2', // cyan
-  '#db2777', // rosa
-  '#4b5563', // gris
+  '#0d3d1f',
+  '#d97706',
+  '#2563eb',
+  '#dc2626',
+  '#7c3aed',
+  '#0891b2',
+  '#db2777',
+  '#4b5563',
 ];
 
+type Filter = 'top5' | 'all' | string; // string = alias of a single player
+
 export default function RankingEvolutionChart({ data, currentUserId }: Props) {
-  const [showAll, setShowAll] = useState(false);
+  const [filter, setFilter] = useState<Filter>('top5');
   const [expanded, setExpanded] = useState(true);
 
   const { chartData, players } = useMemo(() => {
     if (!data.entries.length) return { chartData: [], players: [] };
 
-    // Agrupar snapshots por created_at (mismo batch = mismo timestamp aprox)
-    // Usamos un índice secuencial como eje X para evitar problemas de densidad
     const snapshots: {
       label: string;
       matchLabel?: string;
       [alias: string]: number | string | undefined;
     }[] = [];
 
-    // Agrupar entradas por created_at (a segundo exacto)
     const groups = new Map<string, typeof data.entries>();
     for (const entry of data.entries) {
       const key = entry.created_at;
@@ -67,31 +66,17 @@ export default function RankingEvolutionChart({ data, currentUserId }: Props) {
       index++;
     }
 
-    // Detectar jugadores únicos y ordenar por mejor posición promedio
-    const playerStats = new Map<
-      string,
-      { best: number; avg: number; isMe: boolean }
-    >();
+    const playerStats = new Map<string, { best: number; avg: number; count: number; isMe: boolean }>();
     for (const entry of data.entries) {
-      const stats = playerStats.get(entry.alias) ?? {
-        best: Infinity,
-        avg: 0,
-        count: 0,
-        isMe: entry.user_id === currentUserId,
-      };
+      const stats = playerStats.get(entry.alias) ?? { best: Infinity, avg: 0, count: 0, isMe: entry.user_id === currentUserId };
       stats.best = Math.min(stats.best, entry.position);
       stats.avg += entry.position;
-      (stats as any).count += 1;
-      playerStats.set(entry.alias, stats as any);
+      stats.count += 1;
+      playerStats.set(entry.alias, stats);
     }
 
     const players = Array.from(playerStats.entries())
-      .map(([alias, stats]: [string, any]) => ({
-        alias,
-        avg: stats.avg / stats.count,
-        best: stats.best,
-        isMe: stats.isMe,
-      }))
+      .map(([alias, stats]) => ({ alias, avg: stats.avg / stats.count, best: stats.best, isMe: stats.isMe }))
       .sort((a, b) => a.avg - b.avg);
 
     return { chartData: snapshots, players };
@@ -108,8 +93,17 @@ export default function RankingEvolutionChart({ data, currentUserId }: Props) {
     );
   }
 
-  const visiblePlayers = showAll ? players : players.slice(0, 5);
-  const visibleSet = new Set(visiblePlayers.map((p) => p.alias));
+  // Color by stable index in full sorted players array
+  const colorByAlias = new Map(players.map((p, i) => [p.alias, PALETTE[i % PALETTE.length]]));
+
+  const visiblePlayers =
+    filter === 'top5' ? players.slice(0, 5)
+    : filter === 'all' ? players
+    : players.filter((p) => p.alias === filter);
+
+  const chipBase = 'px-3 py-1 rounded-full text-xs font-semibold transition-colors cursor-pointer border';
+  const chipActive = 'bg-primary text-primary-foreground border-primary';
+  const chipInactive = 'bg-transparent text-muted-foreground border-border hover:bg-muted/50';
 
   return (
     <div className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
@@ -132,7 +126,32 @@ export default function RankingEvolutionChart({ data, currentUserId }: Props) {
       </button>
 
       {expanded && (
-        <div className="px-3 py-4 sm:px-5">
+        <div className="px-3 py-4 sm:px-5 space-y-4">
+          {/* Filter chips */}
+          <div className="flex flex-wrap gap-1.5">
+            <button className={`${chipBase} ${filter === 'top5' ? chipActive : chipInactive}`} onClick={() => setFilter('top5')}>
+              Top 5
+            </button>
+            <button className={`${chipBase} ${filter === 'all' ? chipActive : chipInactive}`} onClick={() => setFilter('all')}>
+              Todos
+            </button>
+            <span className="self-center text-border text-xs mx-0.5">|</span>
+            {players.map((p) => {
+              const isSelected = filter === p.alias;
+              const color = colorByAlias.get(p.alias)!;
+              return (
+                <button
+                  key={p.alias}
+                  onClick={() => setFilter(isSelected ? 'top5' : p.alias)}
+                  className={`${chipBase} ${isSelected ? 'border-transparent' : chipInactive}`}
+                  style={isSelected ? { backgroundColor: color, color: '#fff', borderColor: color } : {}}
+                >
+                  {p.alias}{p.isMe ? ' ★' : ''}
+                </button>
+              );
+            })}
+          </div>
+
           <div className="h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
@@ -156,18 +175,14 @@ export default function RankingEvolutionChart({ data, currentUserId }: Props) {
                     return (
                       <div className="rounded-lg border border-border bg-white p-3 shadow-md text-sm">
                         <p className="font-semibold text-xs text-muted-foreground mb-1">
-                          Snapshot {label}
-                          {matchLabel ? ` · ${matchLabel}` : ''}
+                          Snapshot {label}{matchLabel ? ` · ${matchLabel}` : ''}
                         </p>
                         <div className="space-y-0.5">
                           {[...payload]
                             .sort((a: any, b: any) => (a.value as number) - (b.value as number))
                             .map((item: any) => (
                               <div key={item.dataKey} className="flex items-center gap-2">
-                                <span
-                                  className="inline-block h-2 w-2 rounded-full"
-                                  style={{ backgroundColor: item.color }}
-                                />
+                                <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: item.color }} />
                                 <span className="flex-1">{item.dataKey}</span>
                                 <span className="font-bold">#{item.value}</span>
                               </div>
@@ -177,23 +192,21 @@ export default function RankingEvolutionChart({ data, currentUserId }: Props) {
                     );
                   }}
                 />
-                <Legend
-                  wrapperStyle={{ fontSize: 12 }}
-                  formatter={(value: string) => {
-                    const isMe = players.find((p) => p.alias === value)?.isMe;
-                    return (
-                      <span className={isMe ? 'font-bold text-primary' : ''}>
-                        {value} {isMe ? '(Vos)' : ''}
-                      </span>
-                    );
-                  }}
-                />
-                {visiblePlayers.map((player, i) => (
+                {filter !== 'all' && filter !== 'top5' ? null : (
+                  <Legend
+                    wrapperStyle={{ fontSize: 12 }}
+                    formatter={(value: string) => {
+                      const isMe = players.find((p) => p.alias === value)?.isMe;
+                      return <span className={isMe ? 'font-bold text-primary' : ''}>{value}{isMe ? ' (Vos)' : ''}</span>;
+                    }}
+                  />
+                )}
+                {visiblePlayers.map((player) => (
                   <Line
                     key={player.alias}
                     type="monotone"
                     dataKey={player.alias}
-                    stroke={PALETTE[i % PALETTE.length]}
+                    stroke={colorByAlias.get(player.alias)}
                     strokeWidth={player.isMe ? 3 : 2}
                     dot={{ r: player.isMe ? 4 : 3 }}
                     activeDot={{ r: 6 }}
@@ -203,15 +216,6 @@ export default function RankingEvolutionChart({ data, currentUserId }: Props) {
               </LineChart>
             </ResponsiveContainer>
           </div>
-
-          {players.length > 5 && (
-            <button
-              onClick={() => setShowAll((v) => !v)}
-              className="mt-3 w-full rounded-lg border border-border bg-muted/30 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted/50 transition-colors"
-            >
-              {showAll ? 'Ver solo top 5' : `Ver todos los jugadores (${players.length})`}
-            </button>
-          )}
         </div>
       )}
     </div>
