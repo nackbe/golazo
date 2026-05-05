@@ -489,7 +489,7 @@ Si ambos corren al mismo tiempo: sin conflicto. Si uno falla horas: el otro ya c
 | 5 | Formulario de predicción + validación server-side con `get_server_time()` | ✅ |
 | 6 | Anti-trampa: cada jugador solo ve sus predicciones antes del pitazo | ✅ |
 | 7 | API Route `/api/sync` con detección inteligente y catch-up | ✅ |
-| 8 | Configurar cron-job.org — **pendiente de configurar en producción** | ⏳ |
+| 8 | Configurar Vercel Cron (`vercel.json` ✅ creado) + cron-job.org (⏳ pendiente configurar) | 🟡 |
 | 9 | Cálculo de puntos: sistema configurable + comodines + recálculo de ranking | ✅ |
 | 10 | Leaderboard lee `total_points` actualizado automáticamente | ✅ |
 
@@ -707,6 +707,30 @@ function normalizeMatchStatus(s?: string): string {
 // BIEN
 `https://api.dicebear.com/9.x/pixel-art/svg?seed=X&backgroundColor=fef08a`
 ```
+
+---
+
+## 16. Cambios — Sesión 2026-05-05 (segunda parte)
+
+### Motor de sync — ya completo, solo faltaba el cron
+El endpoint `/api/sync` estaba 100% implementado. Lo único que faltaba era quién lo llama.
+- ✅ **`vercel.json` creado** — Vercel Cron llama `GET /api/sync` cada 2 minutos (requiere plan Pro; en Hobby solo permite diario).
+- ⏳ **cron-job.org** — configurar `POST https://golazo-puce.vercel.app/api/sync` cada 2 minutos como primaria/backup.
+
+### Correcciones de bugs
+- **predicciones de otros jugadores no aparecían**: la query usaba `polla_members!inner` en PostgREST, pero `predictions` no tiene FK hacia `polla_members` — el join fallaba silenciosamente y devolvía vacío. Fix: 3 queries paralelas (predictions, members, match_points) mergeadas en código.
+- **TypeScript errors en CI** (`scripts/seed-demo.ts`, `src/lib/test/factory.ts`): wildcard_used mal tipado como `string|null` en vez de `'x2'|'x3'|null`, `ArrayIterator` sin downlevelIteration, campos JSON tipados como `object`. Fix: tipos correctos, `Array.from()`, `as any` para campos JSONB. También había un `eslint-disable-next-line` con regla inexistente que rompía el build.
+
+### Mejoras de UI
+- **Gráfica de ranking**: reemplaza el toggle Top5/Todos por chips horizontales — uno por jugador + "Top 5" + "Todos". Al tocar un jugador se muestra solo su línea (con su color estable). Tocar de nuevo vuelve a Top 5.
+- **Puntos en fixture**: cada partido muestra los puntos obtenidos al lado del badge 🎯/✓/✗.
+- **Puntos en detalle de partido**: el banner de resultado muestra `+8 pts` / `+3 pts` / `0 pts`.
+- **Predicciones de otros**: visibles desde que el partido inicia (status distinto de NS/TBD/PST), nunca antes.
+
+### Seed de demo (`scripts/seed-demo.ts`)
+- Crea polla DEMO99 con 9 usuarios reales, 6 equipos, 15 partidos, predicciones controladas + aleatorias.
+- Calcula puntos partido a partido y otorga badges para probar el ranking visualmente.
+- Flag `--clean` elimina todo lo creado leyendo `.demo-seed-ids.json`.
 
 ---
 
