@@ -1,5 +1,44 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 
+export interface RandomPrediction {
+  polla_id: string;
+  match_id: string;
+  user_id: string;
+  home_goals: number;
+  away_goals: number;
+  wildcard_used: null;
+}
+
+/**
+ * Función pura: filtra usuarios que aún no tienen predicción.
+ */
+export function filterUsersWithoutPrediction(
+  members: Array<{ user_id: string }>,
+  existingUserIds: Set<string>
+): string[] {
+  return members.map((m) => m.user_id).filter((userId) => !existingUserIds.has(userId));
+}
+
+/**
+ * Función pura: construye predicciones aleatorias (0-10) para una lista de userIds.
+ * Acepta un generador de números aleatorios opcional para testear.
+ */
+export function buildRandomPredictions(
+  userIds: string[],
+  pollaId: string,
+  matchId: string,
+  rng: () => number = Math.random
+): RandomPrediction[] {
+  return userIds.map((userId) => ({
+    polla_id: pollaId,
+    match_id: matchId,
+    user_id: userId,
+    home_goals: Math.floor(rng() * 11),
+    away_goals: Math.floor(rng() * 11),
+    wildcard_used: null,
+  }));
+}
+
 /**
  * Genera predicciones aleatorias (0-10) para los miembros de una polla
  * que no hicieron predicción en un partido específico.
@@ -11,7 +50,6 @@ export async function generateRandomPredictionsForMatch(
 ): Promise<{ generated: number; skipped: number }> {
   const admin = createAdminClient();
 
-  // Verificar que la polla tenga auto_random_prediction activo
   const { data: polla } = await admin
     .from('pollas')
     .select('auto_random_prediction')
@@ -22,7 +60,6 @@ export async function generateRandomPredictionsForMatch(
     return { generated: 0, skipped: 0 };
   }
 
-  // Obtener miembros aprobados de la polla
   const { data: members } = await admin
     .from('polla_members')
     .select('user_id')
@@ -33,7 +70,6 @@ export async function generateRandomPredictionsForMatch(
     return { generated: 0, skipped: 0 };
   }
 
-  // Obtener predicciones existentes para este partido
   const { data: existingPredictions } = await admin
     .from('predictions')
     .select('user_id')
@@ -41,25 +77,13 @@ export async function generateRandomPredictionsForMatch(
     .eq('match_id', matchId);
 
   const existingUserIds = new Set(existingPredictions?.map((p) => p.user_id) || []);
-
-  // Filtrar miembros sin predicción
-  const usersWithoutPrediction = members
-    .map((m) => m.user_id)
-    .filter((userId) => !existingUserIds.has(userId));
+  const usersWithoutPrediction = filterUsersWithoutPrediction(members, existingUserIds);
 
   if (usersWithoutPrediction.length === 0) {
     return { generated: 0, skipped: members.length };
   }
 
-  // Generar predicciones aleatorias (0-10 para cada equipo)
-  const predictionsToInsert = usersWithoutPrediction.map((userId) => ({
-    polla_id: pollaId,
-    match_id: matchId,
-    user_id: userId,
-    home_goals: Math.floor(Math.random() * 11), // 0-10
-    away_goals: Math.floor(Math.random() * 11), // 0-10
-    wildcard_used: null,
-  }));
+  const predictionsToInsert = buildRandomPredictions(usersWithoutPrediction, pollaId, matchId);
 
   const { error } = await admin.from('predictions').insert(predictionsToInsert);
 

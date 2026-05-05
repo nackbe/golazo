@@ -19,7 +19,7 @@ export const BADGE_DEFINITIONS = {
 
 export type BadgeId = keyof typeof BADGE_DEFINITIONS;
 
-interface PredictionHistory {
+export interface PredictionHistory {
   match_id: string;
   pred_home: number;
   pred_away: number;
@@ -30,12 +30,86 @@ interface PredictionHistory {
   scheduled_at: string;
 }
 
-interface Streaks {
+export interface Streaks {
   current_result_streak: number;
   max_result_streak: number;
   current_exact_streak: number;
   max_exact_streak: number;
   current_negative_streak: number;
+}
+
+/**
+ * Función pura que calcula rachas a partir de un historial de predicciones.
+ */
+export function computeStreaks(rows: PredictionHistory[]): Streaks {
+  let currentResult = 0;
+  let maxResult = 0;
+  let currentExact = 0;
+  let maxExact = 0;
+  let currentNegative = 0;
+
+  for (const p of rows) {
+    const exact = p.pred_home === p.real_home && p.pred_away === p.real_away;
+    const realDiff = p.real_home - p.real_away;
+    const predDiff = p.pred_home - p.pred_away;
+    const correctResult = Math.sign(realDiff) === Math.sign(predDiff);
+
+    if (exact) {
+      currentExact++;
+      maxExact = Math.max(maxExact, currentExact);
+    } else {
+      currentExact = 0;
+    }
+
+    if (correctResult) {
+      currentResult++;
+      maxResult = Math.max(maxResult, currentResult);
+      currentNegative = 0;
+    } else {
+      currentResult = 0;
+      currentNegative++;
+    }
+  }
+
+  return {
+    current_result_streak: currentResult,
+    max_result_streak: maxResult,
+    current_exact_streak: currentExact,
+    max_exact_streak: maxExact,
+    current_negative_streak: currentNegative,
+  };
+}
+
+export interface BadgeContext {
+  exact: boolean;
+  correctResult: boolean;
+  wildcardUsed: string | null;
+  isFinal: boolean;
+}
+
+/**
+ * Función pura que determina qué badges corresponden según rachas y contexto.
+ */
+export function determineBadges(streaks: Streaks, context: BadgeContext): Array<{ badge_id: BadgeId; metadata?: Record<string, unknown> }> {
+  const badges: Array<{ badge_id: BadgeId; metadata?: Record<string, unknown> }> = [];
+
+  if (streaks.max_result_streak >= 3) badges.push({ badge_id: 'streak_result_3' });
+  if (streaks.max_result_streak >= 5) badges.push({ badge_id: 'streak_result_5' });
+  if (streaks.max_result_streak >= 10) badges.push({ badge_id: 'streak_result_10' });
+  if (streaks.max_exact_streak >= 2) badges.push({ badge_id: 'streak_exact_2' });
+  if (streaks.max_exact_streak >= 3) badges.push({ badge_id: 'streak_exact_3' });
+  if (streaks.max_exact_streak >= 5) badges.push({ badge_id: 'streak_exact_5' });
+  if (streaks.current_negative_streak >= 5) badges.push({ badge_id: 'negative_streak_5' });
+
+  if (context.exact && (context.wildcardUsed === 'x2' || context.wildcardUsed === 'x3')) {
+    badges.push({ badge_id: 'perfect_wildcard' });
+  }
+
+  if (context.exact && context.isFinal) {
+    badges.push({ badge_id: 'exact_in_final' });
+  }
+
+  return badges;
 }
 
 /**
@@ -66,42 +140,7 @@ export async function calculateAndUpdateStreaks(pollaId: string, userId: string)
     }))
     .filter((p) => p.pred_home >= 0 && p.pred_away >= 0 && p.real_home >= 0 && p.real_away >= 0);
 
-  let currentResult = 0;
-  let maxResult = 0;
-  let currentExact = 0;
-  let maxExact = 0;
-  let currentNegative = 0;
-
-  for (const p of rows) {
-    const exact = p.pred_home === p.real_home && p.pred_away === p.real_away;
-    const realDiff = p.real_home - p.real_away;
-    const predDiff = p.pred_home - p.pred_away;
-    const correctResult = Math.sign(realDiff) === Math.sign(predDiff);
-
-    if (exact) {
-      currentExact++;
-      maxExact = Math.max(maxExact, currentExact);
-    } else {
-      currentExact = 0;
-    }
-
-    if (correctResult) {
-      currentResult++;
-      maxResult = Math.max(maxResult, currentResult);
-      currentNegative = 0;
-    } else {
-      currentResult = 0;
-      currentNegative++;
-    }
-  }
-
-  const streaks: Streaks = {
-    current_result_streak: currentResult,
-    max_result_streak: maxResult,
-    current_exact_streak: currentExact,
-    max_exact_streak: maxExact,
-    current_negative_streak: currentNegative,
-  };
+  const streaks = computeStreaks(rows);
 
   await admin
     .from('player_streaks')
@@ -131,26 +170,7 @@ export async function awardBadgesFromMatch(
 
   const { streaks } = await calculateAndUpdateStreaks(pollaId, userId);
 
-  const badgesToAward: Array<{ badge_id: BadgeId; metadata?: Record<string, unknown> }> = [];
-
-  // Streak badges
-  if (streaks.max_result_streak >= 3) badgesToAward.push({ badge_id: 'streak_result_3' });
-  if (streaks.max_result_streak >= 5) badgesToAward.push({ badge_id: 'streak_result_5' });
-  if (streaks.max_result_streak >= 10) badgesToAward.push({ badge_id: 'streak_result_10' });
-  if (streaks.max_exact_streak >= 2) badgesToAward.push({ badge_id: 'streak_exact_2' });
-  if (streaks.max_exact_streak >= 3) badgesToAward.push({ badge_id: 'streak_exact_3' });
-  if (streaks.max_exact_streak >= 5) badgesToAward.push({ badge_id: 'streak_exact_5' });
-  if (streaks.current_negative_streak >= 5) badgesToAward.push({ badge_id: 'negative_streak_5' });
-
-  // Perfect wildcard
-  if (context.exact && (context.wildcardUsed === 'x2' || context.wildcardUsed === 'x3')) {
-    badgesToAward.push({ badge_id: 'perfect_wildcard' });
-  }
-
-  // Exact in final
-  if (context.exact && context.isFinal) {
-    badgesToAward.push({ badge_id: 'exact_in_final' });
-  }
+  const badgesToAward = determineBadges(streaks, context);
 
   // First prediction (any prediction in this polla)
   const { count: predCount } = await admin
