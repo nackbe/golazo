@@ -1874,3 +1874,129 @@ También se limpiaron los casts `(polla as any).admin_plays` reemplazándolos po
 - Gráfica de evolución del ranking
 
 ---
+
+---
+
+## PENDIENTES GRANDES — Hoja de Ruta Post-MVP (definidos por el usuario)
+
+### 1. Scripts de cálculo automático (no detallados ni desarrollados)
+
+**Contexto:** Se habló de scripts automáticos que mantengan la integridad de datos sin intervención manual, pero nunca se detallaron ni implementaron completamente.
+
+**Áreas a definir:**
+- **Recálculo automático de puntos** cuando el admin cambia el sistema de puntos de una polla activa (actualmente hay botón manual "Recalcular puntos")
+- **Validación de integridad** — script que detecte inconsistencias (ej: match_points sin predictions, predictions sin match_points, total_points desfasado vs suma real)
+- **Limpieza de datos huérfanos** — eliminar predicciones de miembros rechazados, match_points de partidos borrados, etc.
+- **Reporte de uso de API-Football** — alerta cuando se acerca al límite diario
+- **Backup periódico** de tablas críticas (pollas, predictions, match_points)
+
+**Estado:** ⏳ Pendiente de definir alcance y prioridad en sesión dedicada.
+
+---
+
+### 2. UX de la página Configurar
+
+**Problema:** La página `/pollas/[id]/configurar` tiene toda la funcionalidad pero la experiencia puede ser confusa:
+- 3 secciones colapsables con muchos campos
+- El botón "Guardar cambios" está al final, lejos de donde se hacen cambios
+- No hay feedback visual inmediato al cambiar un campo
+- El orden de los campos no sigue el flujo mental del admin (¿qué configuro primero?)
+- La sección de miembros pendientes aparece arriba, interrumpiendo el flujo de configuración
+- El botón "Iniciar polla" es fácil de confundir con "Guardar cambios"
+
+**Mejoras propuestas:**
+1. **Wizard/Steps** — dividir en pasos: (1) Datos básicos, (2) Torneo + Fixtures, (3) Sistema de puntos, (4) Revisar e iniciar
+2. **Auto-save** por sección en lugar de un botón global al final
+3. **Preview en vivo** — mostrar cómo se verá la polla antes de iniciarla
+4. **Reordenar secciones** — miembros pendientes en un tab/panel separado, no intercalado
+5. **Feedback táctil** — toasts por sección, no un banner fijo al tope
+6. **Validación inline** — mostrar errores al salir de un campo, no al hacer submit
+
+**Estado:** ⏳ Pendiente diseño de wireframes y decisión de enfoque (wizard vs single-page mejorada).
+
+---
+
+### 3. Gráfica de evolución del ranking
+
+**Descripción:** Línea de tiempo que muestra cómo sube/baja cada jugador en el ranking partido a partido.
+
+**Datos necesarios:**
+- Tabla `ranking_history` ya existe en schema pero no se utiliza actualmente
+- Se necesita poblar `ranking_history` en cada cálculo de puntos: `polla_id, user_id, match_id, total_points_after, position, created_at`
+
+**Visualización propuesta:**
+- Gráfico de líneas con Recharts o Chart.js
+- Eje X: partidos (fecha o número de partido)
+- Eje Y: posición en el ranking (1 arriba, último abajo)
+- Cada jugador es una línea de color distinto
+- Hover muestra el marcador exacto de ese partido y los puntos ganados
+
+**Estado:** ⏳ Pendiente. Requiere:
+1. Modificar `calculate-points.ts` para escribir en `ranking_history`
+2. Crear endpoint/API para traer datos históricos
+3. Componente de gráfica en la página de detalle de polla
+
+---
+
+### 4. Modo racha y badges
+
+**Descripción:** Sistema de logros que motiva a los jugadores y añade tensión social.
+
+**Rachas (streaks) propuestas:**
+- 🔥 Racha de aciertos: 3, 5, 10 partidos acertando resultado seguidos
+- 🎯 Racha de exactos: 2, 3, 5 marcadores exactos seguidos
+- 💀 Racha negativa: 5 partidos sin acertar (badge "En recuperación")
+
+**Badges (logros únicos):**
+- 🏆 Campeón de polla — ganar una polla
+- 🥇 Primer lugar intermedio — liderar al menos una vez
+- 🎲 Adivino — acertar marcador exacto en final
+- 🃏 Comodín perfecto — usar x2/x3 en partido donde se acierta exacto
+- 🔔 Nunca falta — predecir todos los partidos de una polla
+- 🌟 Novato — primera predicción
+- 👑 Legend — ganar 3 pollas
+
+**Implementación:**
+- Nueva tabla `player_badges` (`user_id`, `badge_id`, `earned_at`, `polla_id?`)
+- Cálculo de rachas en `calculate-points.ts` (o función separada)
+- UI: panel de badges en perfil + tooltip en leaderboard
+
+**Estado:** ⏳ Pendiente diseño de badges y definición de reglas de cada uno.
+
+---
+
+### 5. Plan de pruebas
+
+**Objetivo:** Tener una suite mínima que garantice que el core no se rompe al hacer cambios.
+
+**Áreas críticas a testear:**
+1. **Auth** — login, onboarding, redirect, middleware
+2. **Pollas** — crear, unirse, iniciar, eliminar
+3. **Predicciones** — guardar, editar, validar deadline, comodines
+4. **Cálculo de puntos** — todos los escenarios de scoring (resultado, goles, exacto, diferencia, total)
+5. **Sync** — idempotencia, progresión de estados, cálculo post-partido
+6. **RLS** — usuario A no ve datos de usuario B
+
+**Herramientas propuestas:**
+- Vitest (ya viene con Next.js 14)
+- `@testing-library/react` para componentes
+- `msw` para mock de API-Football
+- Supabase local (cli) para tests de integración
+
+**Estado:** ⏳ Pendiente. Carpeta `tests/` vacía. Se necesita sesión dedicada a setup de testing + primeros tests críticos.
+
+---
+
+## Resumen de pendientes por prioridad (opinión del desarrollador)
+
+| Prioridad | Pendiente | Esfuerzo estimado | Impacto usuario |
+|---|---|---|---|
+| Alta | Gráfica de evolución del ranking | 1-2 sesiones | ⭐⭐⭐ Muy deseable, genera tensión |
+| Alta | Plan de pruebas (core) | 2-3 sesiones | ⭐⭐ Evita regresiones |
+| Media | UX página Configurar | 1-2 sesiones | ⭐⭐ Mejora onboarding de admins |
+| Media | Modo racha y badges | 2 sesiones | ⭐⭐ Engagement social |
+| Baja | Scripts de cálculo automático | 1 sesión (definir) | ⭐ Reduce carga manual del admin |
+| Baja | PWA service worker | 0.5 sesiones | ⭐ Instalable, pero no crítico |
+| Baja | Notificaciones push/email | 2 sesiones | ⭐ Necesita dominio propio |
+
+---
