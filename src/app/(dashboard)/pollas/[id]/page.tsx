@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Settings, Hash, Trophy, CalendarDays, Sparkles } from 'lucide-react';
@@ -50,7 +51,10 @@ export default async function PollaDetailPage({ params }: Props) {
 
   if (!isAdmin && !isMember) redirect('/pollas');
 
-  const { data: members } = await supabase
+  // Usar admin client para que cualquier miembro aprobado pueda ver el ranking completo
+  // (la RLS por defecto solo deja ver la fila propia)
+  const admin = createAdminClient();
+  const { data: members } = await admin
     .from('polla_members')
     .select('alias, total_points, user_id, profiles(avatar_url)')
     .eq('polla_id', params.id)
