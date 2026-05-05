@@ -3,6 +3,9 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { getFixtures } from '@/services/api-football';
 import { getSetting } from '@/lib/settings';
 
+export const runtime = 'edge';
+export const maxDuration = 30;
+
 function isAuthorized(request: Request): boolean {
   const authHeader = request.headers.get('authorization');
   const expected = `Bearer ${process.env.CRON_SECRET}`;

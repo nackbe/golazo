@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getLiveFixtures, getFixturesByIds } from '@/services/api-football';
-import { calculateMatchPoints, updateTournamentSpecialResults, calculateSpecialPoints } from '@/lib/sync/calculate-points';
+import { batchCalculateMatchPoints, updateTournamentSpecialResults, calculateSpecialPoints } from '@/lib/sync/calculate-points';
 import { generateRandomPredictionsForMatch } from '@/lib/sync/random-predictions';
+
+export const runtime = 'edge';
+export const maxDuration = 30;
 
 const VALID_STATUS_PROGRESSION = [
   'NS', '1H', 'HT', '2H', 'ET', 'P', 'FT', 'AFT', 'CANC',
@@ -50,7 +53,6 @@ function isAuthorized(request: Request): boolean {
   return authHeader === expected;
 }
 
-// GET: llamado por Vercel Cron (vercel.json)
 export async function GET(request: Request) {
   if (!isAuthorized(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -58,7 +60,6 @@ export async function GET(request: Request) {
   return runSync();
 }
 
-// POST: llamado por cron-job.org u otros clientes externos
 export async function POST(request: Request) {
   if (!isAuthorized(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -80,7 +81,7 @@ async function runSync() {
   // 1. Leer estado actual de la BD (en paralelo)
   // ─────────────────────────────────────────
 
-  const [previousLiveMatchesRes, overdueMatchesRes, finishedMatchesRes] = await Promise.all([
+  const [previousLiveMatchesRes, overdueMatchesRes] = await Promise.all([
     admin
       .from('matches')
       .select('id, api_football_id, status, tournament_id')
@@ -90,18 +91,12 @@ async function runSync() {
       .select('id, api_football_id, status, scheduled_at, tournament_id')
       .eq('status', 'NS')
       .lt('scheduled_at', now),
-    admin
-      .from('matches')
-      .select('id, api_football_id, status, scheduled_at, points_calculated, tournament_id')
-      .in('status', ['FT', 'AFT'])
-      .eq('points_calculated', false),
   ]);
 
   const previousLiveMatches = previousLiveMatchesRes.data;
   const overdueMatches = overdueMatchesRes.data;
-  const finishedMatches = finishedMatchesRes.data;
 
-  const toCalculate: string[] = (finishedMatches || []).map((m) => m.id);
+  const toCalculate: string[] = [];
   const allTournamentIds = new Set<string>();
 
   // ─────────────────────────────────────────
@@ -110,7 +105,7 @@ async function runSync() {
 
   let liveApiFixtures: any[] = [];
   try {
-    const liveData = await getLiveFixtures(0); // 0 = all leagues
+    const liveData = await getLiveFixtures(0);
     liveApiFixtures = liveData.response || [];
   } catch (err: any) {
     results.errors.push(`live=all error: ${err.message}`);
@@ -243,52 +238,74 @@ async function runSync() {
   await Promise.all(randomPredPromises);
 
   // ─────────────────────────────────────────
-  // 6. Calcular puntos de partidos terminados
+  // 6. Calcular puntos de partidos terminados (BATCH por polla)
   // ─────────────────────────────────────────
+  // En vez de calculateMatchPoints uno por uno, usamos batchCalculateMatchPoints
+  // que procesa TODOS los partidos pendientes de una polla en una sola pasada.
 
-  const uniqueToCalculate = Array.from(new Set(toCalculate));
-  for (const matchId of uniqueToCalculate) {
-    try {
-      const calcResult = await calculateMatchPoints(matchId);
-      if ('processed' in calcResult) {
-        results.calculated++;
-      }
-    } catch (err: any) {
-      results.errors.push(`Calculate ${matchId}: ${err.message}`);
-    }
+  const affectedPollaIds = new Set<string>();
+
+  // Encontrar pollas afectadas por los torneos con cambios
+  for (const tournamentId of Array.from(allTournamentIds)) {
+    const { data: pollas } = await admin
+      .from('pollas')
+      .select('id')
+      .eq('tournament_id', tournamentId)
+      .in('status', ['active', 'finished']);
+    for (const p of pollas || []) if (p.id) affectedPollaIds.add(p.id);
   }
+
+  // También buscar pollas que tengan cualquier partido terminado sin calcular
+  // (por si quedó alguno de ejecuciones previas)
+  const { data: pendingPollas } = await admin
+    .from('matches')
+    .select('tournament_id')
+    .in('status', ['FT', 'AFT'])
+    .eq('points_calculated', false);
+
+  const pendingTournamentIds = new Set(
+    (pendingPollas || []).map((m) => m.tournament_id).filter(Boolean) as string[]
+  );
+
+  for (const tournamentId of Array.from(pendingTournamentIds)) {
+    const { data: pollas } = await admin
+      .from('pollas')
+      .select('id')
+      .eq('tournament_id', tournamentId)
+      .in('status', ['active', 'finished']);
+    for (const p of pollas || []) if (p.id) affectedPollaIds.add(p.id);
+  }
+
+  const batchPromises: Promise<void>[] = [];
+  for (const pollaId of Array.from(affectedPollaIds)) {
+    batchPromises.push(
+      batchCalculateMatchPoints(pollaId).then((res) => {
+        if ('processed' in res && typeof res.processed === 'number') {
+          results.calculated += res.processed;
+        }
+      }).catch((err: any) => {
+        results.errors.push(`Batch calculate ${pollaId}: ${err.message}`);
+      })
+    );
+  }
+  await Promise.all(batchPromises);
 
   // ─────────────────────────────────────────
   // 7. Calcular predicciones especiales
   // ─────────────────────────────────────────
 
+  const specialPromises: Promise<void>[] = [];
   for (const tournamentId of Array.from(allTournamentIds)) {
-    try {
-      await updateTournamentSpecialResults(tournamentId);
-    } catch (err: any) {
-      results.errors.push(`Special results ${tournamentId}: ${err.message}`);
-    }
+    specialPromises.push(
+      updateTournamentSpecialResults(tournamentId).catch((err: any) => {
+        results.errors.push(`Special results ${tournamentId}: ${err.message}`);
+      })
+    );
   }
-
-  const affectedPollas = new Set<string>();
-  for (const matchId of uniqueToCalculate) {
-    const match = [
-      ...(previousLiveMatches || []),
-      ...(overdueMatches || []),
-      ...(finishedMatches || []),
-    ].find((m) => m.id === matchId);
-    if (match?.tournament_id) {
-      const { data: pollas } = await admin
-        .from('pollas')
-        .select('id')
-        .eq('tournament_id', match.tournament_id)
-        .in('status', ['active', 'finished']);
-      for (const p of pollas || []) affectedPollas.add(p.id);
-    }
-  }
+  await Promise.all(specialPromises);
 
   let specialCalculated = 0;
-  for (const pollaId of Array.from(affectedPollas)) {
+  for (const pollaId of Array.from(affectedPollaIds)) {
     try {
       const specialResult = await calculateSpecialPoints(pollaId);
       if ('processed' in specialResult && (specialResult.processed ?? 0) > 0) {

@@ -2119,24 +2119,48 @@ Regla: nunca antes de que el partido arranque, pero desde el primer minuto en qu
 | Migraciones DB | ✅ 0001–0027 aplicadas | Incluye grants de service_role |
 | Bug streaks `.in()` en join | ✅ Arreglado | Filtrado movido a JS |
 | GitHub ↔ Vercel | ✅ Conectado | Deploy automático en push a main |
-| **Cron externo (cron-job.org)** | ⏳ **ÚNICO PENDIENTE** | Ver instrucciones abajo |
+| **Cron externo (cron-job.org)** | ⏳ **ÚNICO PENDIENTE** | 2 jobs: live + fixtures |
 | Variables de entorno en Vercel | ✅ Configuradas | CRON_SECRET incluido |
-| `vercel.json` | ✅ Con cron cada 2 min | Ignorado en Hobby, sirve si upgradeas a Pro |
+| Endpoint refactorizado | ✅ `/api/sync` + `/api/sync/fixtures` | Separado para <10 seg en Hobby |
+| `vercel.json` | ❌ Eliminado | No compatible con Hobby; usar cron-job.org |
 
 ### Por qué cron-job.org y no Vercel Cron nativo
 Vercel **Hobby** solo permite crons con frecuencia **diaria**. `vercel.json` dice `*/2 * * * *`, pero Vercel Hobby lo ignora. La solución gratis y confiable es **cron-job.org**.
 
 ### Instrucciones para configurar cron-job.org
 
-1. Ir a [cron-job.org](https://cron-job.org) → crear cuenta (gratis)
-2. Click **"Create cronjob"**
-3. Configurar:
-   - **Title**: `Golazo Sync`
-   - **URL**: `https://golazo-puce.vercel.app/api/sync`
-   - **Request Method**: `POST`
-   - **Headers**: `Authorization: Bearer <CRON_SECRET>` (el valor de tu `.env.local`)
-   - **Schedule**: `Every 2 minutes` (o el mínimo que permita la UI, normalmente 1 min)
-4. Guardar y verificar que el primer request devuelva `200` con `{"ok":true,...}`
+Necesitás **2 cronjobs** porque dividimos el endpoint para que quepa en el límite de 10 segundos de Vercel Hobby.
+
+#### Job 1 — Live + Points (cada 2 minutos)
+
+| Campo | Valor |
+|-------|-------|
+| **Title** | `Golazo Live Sync` |
+| **URL** | `https://golazo-puce.vercel.app/api/sync` |
+| **Request Method** | `POST` |
+| **Headers** | `Authorization: Bearer <CRON_SECRET>` |
+| **Schedule** | `Every 2 minutes` |
+| **Timeout** | `30` segundos |
+
+Qué hace: live scores, detecta partidos terminados, calcula puntos, badges, predicciones especiales.
+
+#### Job 2 — Fixture Sync (cada 6 horas)
+
+| Campo | Valor |
+|-------|-------|
+| **Title** | `Golazo Fixture Sync` |
+| **URL** | `https://golazo-puce.vercel.app/api/sync/fixtures` |
+| **Request Method** | `POST` |
+| **Headers** | `Authorization: Bearer <CRON_SECRET>` |
+| **Schedule** | `Every 6 hours` (o `Custom`: `0 */6 * * *`) |
+| **Timeout** | `30` segundos (máximo gratis) |
+
+Qué hace: sincroniza fixtures nuevos de torneos activos. Puede tardar >10 segundos si hay muchos torneos; en ese caso Vercel Hobby lo mata y se reintenta en 6 horas. No crítico para la experiencia de usuario.
+
+#### Verificación
+1. Guardar ambos jobs
+2. Dale **"Test run"** al job 1 — debe devolver `200` con `{"ok":true,"synced":N,"calculated":N}`
+3. Dale **"Test run"** al job 2 — debe devolver `200` con `{"ok":true,"fixture_syncs":N,"tournaments_checked":N}`
 
 ### Fallback / redundancia
 Si en el futuro upgradeas a **Vercel Pro** ($20/mes), el `vercel.json` ya está listo y el cron nativo se activa automáticamente. Puedes dejar ambos corriendo — la lógica es idempotente, no duplica puntos.
@@ -2155,7 +2179,7 @@ Si en el futuro upgradeas a **Vercel Pro** ($20/mes), el `vercel.json` ya está 
 
 | Prioridad | Pendiente | Estado |
 |---|---|---|
-| 🔴 **Crítico** | **Activar cron-job.org** (único bloqueante para producción) | ⏳ Ver instrucciones arriba |
+| 🔴 **Crítico** | **Configurar 2 cronjobs en cron-job.org** (live cada 2 min + fixtures cada 6 h) | ⏳ Ver instrucciones arriba |
 | 🟡 Alta | Automatizar tests en CI (descomentar paso en `.github/workflows/ci.yml`) | ⏳ Pendiente |
 | 🟢 Media | Notificaciones push/email (requiere dominio propio para Resend) | ⏳ Pendiente |
 | ⚪ Baja | PWA service worker (instalable como app) | ⏳ Pendiente |
@@ -2169,3 +2193,16 @@ Si en el futuro upgradeas a **Vercel Pro** ($20/mes), el `vercel.json` ya está 
   - 72 unit tests (scoring, match-status, utils, rate-limit, badges, random-predictions)
   - 4 integration tests (exact score, wrong prediction, batch, special predictions)
 - Cubren: cálculo de puntos, wildcards x2/x3, sistemas custom, idempotencia, batch, predicciones especiales, rachas/badges
+
+### Arquitectura de sync (post-refactorización)
+```
+cron-job.org (2 min)  →  POST /api/sync
+  ├─ live scores (API-Football)
+  ├─ detect finished matches
+  ├─ calculate points + badges
+  └─ special predictions
+
+cron-job.org (6 h)    →  POST /api/sync/fixtures
+  ├─ sync new fixtures per tournament
+  └─ batch insert teams + matches
+```
