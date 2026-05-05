@@ -2109,19 +2109,63 @@ Regla: nunca antes de que el partido arranque, pero desde el primer minuto en qu
 
 ---
 
+## Puesta en producción — Checklist
+
+### Estado actual (2026-04-25)
+| Ítem | Estado | Notas |
+|---|---|---|
+| Motor de puntos + ranking + badges | ✅ Listo | `/api/sync` hace todo |
+| Tests unitarios + integración | ✅ 76/76 pasan | Vitest + Supabase real |
+| Migraciones DB | ✅ 0001–0027 aplicadas | Incluye grants de service_role |
+| Bug streaks `.in()` en join | ✅ Arreglado | Filtrado movido a JS |
+| GitHub ↔ Vercel | ✅ Conectado | Deploy automático en push a main |
+| **Cron externo (cron-job.org)** | ⏳ **ÚNICO PENDIENTE** | Ver instrucciones abajo |
+| Variables de entorno en Vercel | ✅ Configuradas | CRON_SECRET incluido |
+| `vercel.json` | ✅ Con cron cada 2 min | Ignorado en Hobby, sirve si upgradeas a Pro |
+
+### Por qué cron-job.org y no Vercel Cron nativo
+Vercel **Hobby** solo permite crons con frecuencia **diaria**. `vercel.json` dice `*/2 * * * *`, pero Vercel Hobby lo ignora. La solución gratis y confiable es **cron-job.org**.
+
+### Instrucciones para configurar cron-job.org
+
+1. Ir a [cron-job.org](https://cron-job.org) → crear cuenta (gratis)
+2. Click **"Create cronjob"**
+3. Configurar:
+   - **Title**: `Golazo Sync`
+   - **URL**: `https://golazo-puce.vercel.app/api/sync`
+   - **Request Method**: `POST`
+   - **Headers**: `Authorization: Bearer <CRON_SECRET>` (el valor de tu `.env.local`)
+   - **Schedule**: `Every 2 minutes` (o el mínimo que permita la UI, normalmente 1 min)
+4. Guardar y verificar que el primer request devuelva `200` con `{"ok":true,...}`
+
+### Fallback / redundancia
+Si en el futuro upgradeas a **Vercel Pro** ($20/mes), el `vercel.json` ya está listo y el cron nativo se activa automáticamente. Puedes dejar ambos corriendo — la lógica es idempotente, no duplica puntos.
+
+### Latencias esperadas en producción
+| Evento | Latencia máxima |
+|---|---|
+| Gol en vivo | ~2 min (próxima ejecución del cron) |
+| Partido termina → puntos calculados | ~2 min |
+| Nuevo fixture aparece en la polla | ~6 h (sync automático configurable) |
+| Partido atrasado/postergado | ~2 min (el cron lo detecta) |
+
+---
+
 ## Resumen de pendientes por prioridad
 
 | Prioridad | Pendiente | Estado |
 |---|---|---|
-| 🟡 Alta | **Automatizar los scripts de prueba** en CI (vitest + smoke corren solos en cada push) | ⏳ Pendiente |
+| 🔴 **Crítico** | **Activar cron-job.org** (único bloqueante para producción) | ⏳ Ver instrucciones arriba |
+| 🟡 Alta | Automatizar tests en CI (descomentar paso en `.github/workflows/ci.yml`) | ⏳ Pendiente |
 | 🟢 Media | Notificaciones push/email (requiere dominio propio para Resend) | ⏳ Pendiente |
 | ⚪ Baja | PWA service worker (instalable como app) | ⏳ Pendiente |
 | ⚪ Baja | UI para marcar resultados especiales manualmente en ligas sin partido "Final" | ⏳ Pendiente |
 
 ### Migraciones — todas aplicadas en producción ✅
-0001 a 0024 + 0026 + 0027. No hay migraciones pendientes.
+0001 a 0027. No hay migraciones pendientes.
 
-### Estado del sistema de tests (2026-05-05)
-- **84/84 vitest tests pasan** — `npx vitest run`
-- **19/19 smoke assertions pasan** — `npx tsx scripts/e2e-smoke.ts`
-- Cubren: cálculo de puntos, wildcards x2/x3, sistemas custom, idempotencia, batch, predicciones especiales, rachas/badges, flujo cron
+### Estado del sistema de tests (2026-04-25)
+- **76/76 vitest tests pasan** — `npx vitest run`
+  - 72 unit tests (scoring, match-status, utils, rate-limit, badges, random-predictions)
+  - 4 integration tests (exact score, wrong prediction, batch, special predictions)
+- Cubren: cálculo de puntos, wildcards x2/x3, sistemas custom, idempotencia, batch, predicciones especiales, rachas/badges
