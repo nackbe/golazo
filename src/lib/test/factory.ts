@@ -33,7 +33,6 @@ export async function createTestPolla(overrides?: { name?: string; point_system?
 
   const { data: polla } = await admin
     .from('pollas')
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .insert({
       name: overrides?.name || '__TEST_POLL__',
       code: `TEST${Math.floor(Math.random() * 100000)}`,
