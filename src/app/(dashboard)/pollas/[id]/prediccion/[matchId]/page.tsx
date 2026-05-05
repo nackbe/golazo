@@ -111,28 +111,42 @@ export default async function PrediccionPage({ params }: Props) {
   let allPredictions: any[] = [];
   if (matchStarted) {
     const admin = createAdminClient();
-    const { data: preds } = await admin
-      .from('predictions')
-      .select('user_id, home_goals, away_goals, wildcard_used, match_points(points), polla_members!inner(alias, profiles(avatar_url))')
-      .eq('polla_id', params.id)
-      .eq('match_id', params.matchId)
-      .eq('polla_members.status', 'approved');
+    const [{ data: preds }, { data: members }, { data: allMatchPoints }] = await Promise.all([
+      admin
+        .from('predictions')
+        .select('user_id, home_goals, away_goals, wildcard_used')
+        .eq('polla_id', params.id)
+        .eq('match_id', params.matchId),
+      admin
+        .from('polla_members')
+        .select('user_id, alias, profiles(avatar_url)')
+        .eq('polla_id', params.id)
+        .eq('status', 'approved'),
+      admin
+        .from('match_points')
+        .select('user_id, points')
+        .eq('polla_id', params.id)
+        .eq('match_id', params.matchId),
+    ]);
 
-    allPredictions = (preds || []).map((p: any) => {
-      const memberData = Array.isArray(p.polla_members) ? p.polla_members[0] : p.polla_members;
-      const profileData = memberData?.profiles;
-      const pointsData = Array.isArray(p.match_points) ? p.match_points[0] : p.match_points;
-      return {
-        user_id: p.user_id,
-        alias: memberData?.alias || '—',
-        avatar_url: profileData?.avatar_url ?? null,
-        home_goals: p.home_goals,
-        away_goals: p.away_goals,
-        wildcard_used: p.wildcard_used,
-        points: pointsData?.points ?? null,
-        is_me: p.user_id === user.id,
-      };
-    });
+    const memberMap = new Map((members || []).map((m: any) => [m.user_id, m]));
+    const pointsMap = new Map((allMatchPoints || []).map((mp: any) => [mp.user_id, mp.points]));
+
+    allPredictions = (preds || [])
+      .filter((p: any) => memberMap.has(p.user_id))
+      .map((p: any) => {
+        const m = memberMap.get(p.user_id) as any;
+        return {
+          user_id: p.user_id,
+          alias: m?.alias || '—',
+          avatar_url: m?.profiles?.avatar_url ?? null,
+          home_goals: p.home_goals,
+          away_goals: p.away_goals,
+          wildcard_used: p.wildcard_used,
+          points: pointsMap.get(p.user_id) ?? null,
+          is_me: p.user_id === user.id,
+        };
+      });
   }
 
   return (
