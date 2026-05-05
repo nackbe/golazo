@@ -119,26 +119,36 @@ export function determineBadges(streaks: Streaks, context: BadgeContext): Array<
 export async function calculateAndUpdateStreaks(pollaId: string, userId: string) {
   const admin = createAdminClient();
 
+  // Note: avoid filtering/ordering on embedded columns in supabase-js — do it in JS instead
   const { data: predictions } = await admin
     .from('predictions')
     .select('match_id, home_goals, away_goals, wildcard_used, matches!inner(home_goals, away_goals, scheduled_at, round, status)')
     .eq('polla_id', pollaId)
-    .eq('user_id', userId)
-    .in('matches.status', ['FT', 'AFT'])
-    .order('matches.scheduled_at', { ascending: true });
+    .eq('user_id', userId);
 
   const rows: PredictionHistory[] = (predictions || [])
-    .map((p: any) => ({
-      match_id: p.match_id,
-      pred_home: p.home_goals ?? -1,
-      pred_away: p.away_goals ?? -1,
-      real_home: p.matches?.home_goals ?? -1,
-      real_away: p.matches?.away_goals ?? -1,
-      wildcard_used: p.wildcard_used,
-      round: p.matches?.round ?? null,
-      scheduled_at: p.matches?.scheduled_at ?? '',
-    }))
-    .filter((p) => p.pred_home >= 0 && p.pred_away >= 0 && p.real_home >= 0 && p.real_away >= 0);
+    .map((p: any) => {
+      // supabase-js may return the embedded join as object or array depending on FK direction
+      const m = Array.isArray(p.matches) ? p.matches[0] : p.matches;
+      return {
+        match_id: p.match_id,
+        pred_home: p.home_goals ?? -1,
+        pred_away: p.away_goals ?? -1,
+        real_home: m?.home_goals ?? -1,
+        real_away: m?.away_goals ?? -1,
+        wildcard_used: p.wildcard_used,
+        round: m?.round ?? null,
+        scheduled_at: m?.scheduled_at ?? '',
+        _status: m?.status ?? '',
+      };
+    })
+    .filter((p) =>
+      (p._status === 'FT' || p._status === 'AFT') &&
+      p.pred_home >= 0 && p.pred_away >= 0 &&
+      p.real_home >= 0 && p.real_away >= 0
+    )
+    .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())
+    .map(({ _status, ...rest }) => rest);
 
   const streaks = computeStreaks(rows);
 
