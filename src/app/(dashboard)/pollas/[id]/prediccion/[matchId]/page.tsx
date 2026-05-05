@@ -106,8 +106,10 @@ export default async function PrediccionPage({ params }: Props) {
     x3: Math.max(0, totalX3 - usedX3ExcludingCurrent),
   };
 
-  // Predicciones de otros: visibles desde que el partido inicia (nunca antes)
+  // Estados del partido
   const matchStarted = !['NS', 'TBD', 'PST'].includes(match.status);
+  const isFinished = match.status === 'FT' || match.status === 'AFT';
+  const isLive = ['1H', 'HT', '2H', 'ET', 'P'].includes(match.status);
   let allPredictions: any[] = [];
   if (matchStarted) {
     const admin = createAdminClient();
@@ -199,7 +201,14 @@ export default async function PrediccionPage({ params }: Props) {
           </div>
         </div>
 
-        {!isOpen && match.home_goals !== null && match.away_goals !== null && (
+        {isLive && (
+          <div className="text-center">
+            <span className="inline-flex items-center gap-1 text-xs font-bold text-orange-700 bg-orange-50 px-3 py-1 rounded-full animate-pulse">
+              ● En vivo
+            </span>
+          </div>
+        )}
+        {isFinished && match.home_goals !== null && match.away_goals !== null && (
           <div className="text-center">
             {match.home_goals > match.away_goals ? (
               <span className="inline-flex items-center gap-1 text-xs font-bold text-green-700 bg-green-50 px-3 py-1 rounded-full">
@@ -219,7 +228,7 @@ export default async function PrediccionPage({ params }: Props) {
       </div>
 
       {/* Resultado de la predicción */}
-      {!isOpen && prediction && match.home_goals !== null && match.away_goals !== null && (() => {
+      {isFinished && prediction && match.home_goals !== null && match.away_goals !== null && (() => {
         const exact = prediction.home_goals === match.home_goals && prediction.away_goals === match.away_goals;
         const realResult = Math.sign(match.home_goals - match.away_goals);
         const predResult = Math.sign(prediction.home_goals - prediction.away_goals);

@@ -2122,6 +2122,8 @@ Regla: nunca antes de que el partido arranque, pero desde el primer minuto en qu
 | **Cron externo (cron-job.org)** | ⏳ **ÚNICO PENDIENTE** | 2 jobs: live + fixtures |
 | Variables de entorno en Vercel | ✅ Configuradas | CRON_SECRET incluido |
 | Endpoint refactorizado | ✅ `/api/sync` + `/api/sync/fixtures` | Separado para <10 seg en Hobby |
+| Runtime | ✅ **Edge Runtime** | 30 seg timeout en Hobby (vs 10 seg serverless) |
+| Cálculo de puntos | ✅ **Batch por polla** | `batchCalculateMatchPoints` en vez de uno por uno |
 | `vercel.json` | ❌ Eliminado | No compatible con Hobby; usar cron-job.org |
 
 ### Por qué cron-job.org y no Vercel Cron nativo
@@ -2196,13 +2198,17 @@ Si en el futuro upgradeas a **Vercel Pro** ($20/mes), el `vercel.json` ya está 
 
 ### Arquitectura de sync (post-refactorización)
 ```
-cron-job.org (2 min)  →  POST /api/sync
+cron-job.org (2 min)  →  POST /api/sync        [Edge Runtime, 30s timeout]
   ├─ live scores (API-Football)
   ├─ detect finished matches
-  ├─ calculate points + badges
+  ├─ batch calculate points + badges (por polla)
   └─ special predictions
 
-cron-job.org (6 h)    →  POST /api/sync/fixtures
+cron-job.org (6 h)    →  POST /api/sync/fixtures  [Edge Runtime, 30s timeout]
   ├─ sync new fixtures per tournament
   └─ batch insert teams + matches
 ```
+
+**Por qué Edge Runtime:** en Vercel Hobby, las serverless functions se matan a los 10 segundos. Edge Functions duran **30 segundos**, lo cual da margen suficiente para el batch de cálculo de puntos.
+
+**Por qué batch:** antes se llamaba `calculateMatchPoints` una vez por partido (N rondas de queries). Ahora se usa `batchCalculateMatchPoints(pollaId)` que procesa **todos los partidos pendientes de una polla en una sola pasada** (1 ronda de queries por polla).
