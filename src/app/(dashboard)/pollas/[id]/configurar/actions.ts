@@ -9,6 +9,17 @@ import { checkRateLimit, logApiUsage } from '@/lib/rate-limit';
 
 const LOCKED_STATUSES = ['active', 'finished'];
 
+const KNOWN_STATUSES = new Set([
+  'NS', 'TBD', 'PST', '1H', 'HT', '2H', 'ET', 'BT', 'P',
+  'SUSP', 'INT', 'FT', 'AET', 'PEN', 'AFT', 'CANC', 'ABD', 'AWD', 'WO', 'LIVE',
+]);
+
+function normalizeMatchStatus(apiStatus: string | undefined): string {
+  if (!apiStatus) return 'NS';
+  if (KNOWN_STATUSES.has(apiStatus)) return apiStatus;
+  return 'NS';
+}
+
 export async function updatePollaSettings(pollaId: string, formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -400,9 +411,11 @@ export async function loadFixtures(pollaId: string, selectedRounds?: string[]) {
     }
   }
 
+  const TERMINAL = new Set(['FT', 'AFT', 'AET', 'PEN', 'CANC', 'ABD', 'AWD', 'WO']);
   const matchesToUpsert = fixtures.map((f) => {
-    const apiStatus = f.fixture?.status?.short;
-    const isFinished = apiStatus === 'FT' || apiStatus === 'AFT';
+    const rawStatus = f.fixture?.status?.short;
+    const status = normalizeMatchStatus(rawStatus);
+    const isFinished = TERMINAL.has(status);
     return {
       tournament_id: tournament.id,
       api_football_id: f.fixture?.id ?? null,
@@ -412,16 +425,18 @@ export async function loadFixtures(pollaId: string, selectedRounds?: string[]) {
       away_goals: isFinished ? f.goals?.away ?? null : null,
       home_penalty_goals: isFinished ? f.score?.penalty?.home ?? null : null,
       away_penalty_goals: isFinished ? f.score?.penalty?.away ?? null : null,
-      status: apiStatus || 'NS',
+      status,
       round: f.league?.round || 'Fase de grupos',
       scheduled_at: f.fixture?.date,
       venue: f.fixture?.venue?.name || null,
     };
   });
 
-  await admin
+  const { error: upsertError } = await admin
     .from('matches')
     .upsert(matchesToUpsert, { onConflict: 'api_football_id' });
+
+  if (upsertError) return { error: `Error al guardar partidos: ${upsertError.message}` };
 
   await logApiUsage(user.id, 'load_fixtures', user.id, {
     tournament_id: tournament.id,
@@ -573,8 +588,8 @@ export async function syncFixtures(pollaId: string, selectedRounds?: string[]) {
     }
 
     const matchesToInsert = newFixtures.map((f) => {
-      const apiStatus = f.fixture?.status?.short;
-      const isFinished = TERMINAL_STATUSES.has(apiStatus || '');
+      const status = normalizeMatchStatus(f.fixture?.status?.short);
+      const isFinished = TERMINAL_STATUSES.has(status);
       return {
         tournament_id: tournament.id,
         api_football_id: f.fixture?.id ?? null,
@@ -584,7 +599,7 @@ export async function syncFixtures(pollaId: string, selectedRounds?: string[]) {
         away_goals: isFinished ? f.goals?.away ?? null : null,
         home_penalty_goals: isFinished ? f.score?.penalty?.home ?? null : null,
         away_penalty_goals: isFinished ? f.score?.penalty?.away ?? null : null,
-        status: apiStatus || 'NS',
+        status,
         round: f.league?.round || 'Fase de grupos',
         scheduled_at: f.fixture?.date,
         venue: f.fixture?.venue?.name || null,

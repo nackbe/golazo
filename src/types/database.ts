@@ -132,7 +132,7 @@ export interface Database {
           away_goals: number | null
           home_penalty_goals: number | null
           away_penalty_goals: number | null
-          status: 'NS' | '1H' | 'HT' | '2H' | 'ET' | 'P' | 'FT' | 'AFT' | 'CANC' | null
+          status: string | null
           round: string | null
           scheduled_at: string
           venue: string | null
@@ -149,7 +149,7 @@ export interface Database {
           away_goals?: number | null
           home_penalty_goals?: number | null
           away_penalty_goals?: number | null
-          status?: 'NS' | '1H' | 'HT' | '2H' | 'ET' | 'P' | 'FT' | 'AFT' | 'CANC' | null
+          status?: string | null
           round?: string | null
           scheduled_at: string
           venue?: string | null
@@ -166,7 +166,7 @@ export interface Database {
           away_goals?: number | null
           home_penalty_goals?: number | null
           away_penalty_goals?: number | null
-          status?: 'NS' | '1H' | 'HT' | '2H' | 'ET' | 'P' | 'FT' | 'AFT' | 'CANC' | null
+          status?: string | null
           round?: string | null
           scheduled_at?: string
           venue?: string | null
