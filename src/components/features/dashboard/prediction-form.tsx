@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Loader2, Zap } from 'lucide-react';
+import { Loader2, Zap, Plus, Minus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { savePrediction } from '@/app/(dashboard)/pollas/[id]/prediccion/actions';
 
@@ -15,6 +15,53 @@ interface Props {
     wildcard_used: 'x2' | 'x3' | null;
   } | null;
   wildcardsAvailable: { x2: number; x3: number };
+}
+
+function GoalInput({
+  label,
+  value,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <span className="text-xs font-medium text-muted-foreground">{label}</span>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          disabled={disabled || value <= 0}
+          onClick={() => onChange(Math.max(0, value - 1))}
+          className="flex h-10 w-10 items-center justify-center rounded-full border border-border bg-background text-lg font-bold transition-colors hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
+        >
+          <Minus className="h-4 w-4" />
+        </button>
+        <input
+          type="number"
+          inputMode="numeric"
+          min={0}
+          max={20}
+          value={value}
+          onChange={(e) => onChange(Math.max(0, parseInt(e.target.value) || 0))}
+          onFocus={(e) => e.target.select()}
+          disabled={disabled}
+          className="h-14 w-16 rounded-xl border bg-background text-center text-3xl font-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+        />
+        <button
+          type="button"
+          disabled={disabled || value >= 20}
+          onClick={() => onChange(Math.min(20, value + 1))}
+          className="flex h-10 w-10 items-center justify-center rounded-full border border-border bg-background text-lg font-bold transition-colors hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
+        >
+          <Plus className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  );
 }
 
 export function PredictionForm({
@@ -57,13 +104,13 @@ export function PredictionForm({
 
   if (!isOpen) {
     return (
-      <div className="rounded-lg border bg-muted/50 p-6 text-center">
-        <p className="font-medium text-muted-foreground">
+      <div className="rounded-xl border bg-muted/50 p-6 text-center space-y-1">
+        <p className="font-medium text-muted-foreground text-sm">
           El plazo de apuestas para este partido ya cerró.
         </p>
         {existingPrediction && (
-          <p className="mt-2 text-lg font-bold">
-            Tu predicción: {existingPrediction.home_goals} - {existingPrediction.away_goals}
+          <p className="text-2xl font-black">
+            {existingPrediction.home_goals} – {existingPrediction.away_goals}
           </p>
         )}
       </div>
@@ -78,40 +125,14 @@ export function PredictionForm({
         </div>
       )}
 
-      <div className="flex items-center justify-center gap-4">
-        <div className="flex flex-col items-center gap-2">
-          <label className="text-xs font-medium text-muted-foreground">Local</label>
-          <input
-            type="number"
-            inputMode="numeric"
-            min={0}
-            max={20}
-            value={homeGoals}
-            onChange={(e) => setHomeGoals(Math.max(0, parseInt(e.target.value) || 0))}
-            onFocus={(e) => e.target.select()}
-            className="h-16 w-20 rounded-xl border bg-background text-center text-3xl font-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          />
-        </div>
-
-        <span className="text-2xl font-bold text-muted-foreground">:</span>
-
-        <div className="flex flex-col items-center gap-2">
-          <label className="text-xs font-medium text-muted-foreground">Visitante</label>
-          <input
-            type="number"
-            inputMode="numeric"
-            min={0}
-            max={20}
-            value={awayGoals}
-            onChange={(e) => setAwayGoals(Math.max(0, parseInt(e.target.value) || 0))}
-            onFocus={(e) => e.target.select()}
-            className="h-16 w-20 rounded-xl border bg-background text-center text-3xl font-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          />
-        </div>
+      <div className="flex items-center justify-center gap-6">
+        <GoalInput label="Local" value={homeGoals} onChange={setHomeGoals} disabled={isLoading} />
+        <span className="text-2xl font-bold text-muted-foreground pb-6">–</span>
+        <GoalInput label="Visitante" value={awayGoals} onChange={setAwayGoals} disabled={isLoading} />
       </div>
 
       {/* Comodines */}
-      {(wildcardsAvailable.x2 > 0 || wildcardsAvailable.x3 > 0 || wildcard === 'x2' || wildcard === 'x3') && (
+      {(wildcardsAvailable.x2 > 0 || wildcardsAvailable.x3 > 0 || wildcard) && (
         <div className="space-y-2">
           <label className="text-sm font-medium">Comodín (opcional)</label>
           <div className="flex gap-2">
@@ -127,8 +148,7 @@ export function PredictionForm({
                 }`}
               >
                 <Zap className="h-4 w-4" />
-                x2 {wildcardsAvailable.x2 > 0 && !wildcard ? `(${wildcardsAvailable.x2} disp.)` : ''}
-                {wildcard === 'x2' && '(activo)'}
+                x2 {wildcard === 'x2' ? '(activo)' : `(${wildcardsAvailable.x2} disp.)`}
               </button>
             )}
             {(wildcardsAvailable.x3 > 0 || wildcard === 'x3') && (
@@ -143,8 +163,7 @@ export function PredictionForm({
                 }`}
               >
                 <Zap className="h-4 w-4" />
-                x3 {wildcardsAvailable.x3 > 0 && !wildcard ? `(${wildcardsAvailable.x3} disp.)` : ''}
-                {wildcard === 'x3' && '(activo)'}
+                x3 {wildcard === 'x3' ? '(activo)' : `(${wildcardsAvailable.x3} disp.)`}
               </button>
             )}
           </div>

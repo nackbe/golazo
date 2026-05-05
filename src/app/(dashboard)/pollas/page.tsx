@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { Plus, Trophy, Hash } from 'lucide-react';
 import { PollaCard } from '@/components/features/dashboard/polla-card';
+import { PollaListFilters } from '@/components/features/dashboard/polla-list-filters';
 
 export default async function PollasPage() {
   const supabase = await createClient();
@@ -18,22 +19,22 @@ export default async function PollasPage() {
       .order('created_at', { ascending: false }),
     supabase
       .from('polla_members')
-      .select('polla_id, alias, pollas(id, name, code, status, tournaments(name))')
+      .select('polla_id, alias, pollas(id, name, code, status, created_at, tournaments(name))')
       .eq('user_id', user.id)
       .eq('status', 'approved'),
   ]);
 
-  const adminIds = new Set(adminPollas?.map((p) => p.id) ?? []);
+  const adminPollasIds = new Set(adminPollas?.map((p) => p.id) ?? []);
   const memberOnlyPollas =
     memberPollas
-      ?.filter((m) => !adminIds.has(m.polla_id))
+      ?.filter((m) => !adminPollasIds.has(m.polla_id))
       .map((m) => m.pollas)
       .filter(Boolean) ?? [];
 
   const allPollas = [
     ...(adminPollas ?? []).map((p) => ({ ...p, isAdmin: true })),
-    ...(memberOnlyPollas ?? []).map((p) => ({ ...p, isAdmin: false })),
-  ];
+    ...(memberOnlyPollas ?? []).map((p) => ({ ...p as any, isAdmin: false })),
+  ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
   return (
     <div className="space-y-6">
@@ -93,18 +94,7 @@ export default async function PollasPage() {
           </div>
         </div>
       ) : (
-        <>
-          <div className="flex items-center justify-between">
-            <h2 className="font-semibold text-foreground">
-              {allPollas.length} {allPollas.length === 1 ? 'polla' : 'pollas'}
-            </h2>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {allPollas.map((polla) => (
-              <PollaCard key={polla.id} polla={polla} />
-            ))}
-          </div>
-        </>
+        <PollaListFilters pollas={allPollas} />
       )}
     </div>
   );

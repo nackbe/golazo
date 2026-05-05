@@ -281,7 +281,7 @@ export function PollaSettingsForm({ polla }: { polla: Polla }) {
                 </div>
                 <NumberInput
                   name={`ps_${f.key}`}
-                  defaultValue={sps(polla, f.key, f.defaultVal)}
+                  defaultValue={ps(polla, f.key, f.defaultVal)}
                   min={0}
                   max={f.max}
                   disabled={isPending || isLocked}
@@ -303,7 +303,7 @@ export function PollaSettingsForm({ polla }: { polla: Polla }) {
                 </div>
                 <NumberInput
                   name={`ps_${f.key}`}
-                  defaultValue={ps(polla, f.key, f.defaultVal)}
+                  defaultValue={sps(polla, f.key, f.defaultVal)}
                   min={0}
                   max={f.max}
                   disabled={isPending || isLocked}

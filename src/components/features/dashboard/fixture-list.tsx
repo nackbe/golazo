@@ -267,9 +267,14 @@ export function FixtureList({ pollaId, matches, predictions, betDeadlineMinutes,
     const isDraw = isFinished && (match.home_goals ?? 0) === (match.away_goals ?? 0);
 
     return (
-      <div
+      <Link
         key={match.id}
-        className="grid grid-cols-[1fr_auto_1fr] gap-2 items-center rounded-xl border bg-card p-3 sm:p-4"
+        href={`/pollas/${pollaId}/prediccion/${match.id}`}
+        onClick={() => {
+          sessionStorage.setItem('fixtureScrollY', String(window.scrollY));
+          sessionStorage.setItem('fixtureReturnUrl', window.location.pathname + window.location.search);
+        }}
+        className="grid grid-cols-[1fr_auto_1fr] gap-2 items-center rounded-xl border bg-card p-3 sm:p-4 transition-colors hover:bg-accent/50 active:scale-[0.99]"
       >
         {/* Col 1: Equipo local — logo + nombre apilados */}
         <div className={`flex flex-col items-center gap-1 text-center ${homeWon ? 'text-green-700' : isDraw ? 'text-amber-700' : ''}`}>
@@ -284,7 +289,7 @@ export function FixtureList({ pollaId, matches, predictions, betDeadlineMinutes,
           {homeWon && <span className="text-xs text-green-600 font-bold">✓</span>}
         </div>
 
-        {/* Col 2: Centro — marcador/vs + hora + round + botón */}
+        {/* Col 2: Centro — marcador/vs + hora + round + badge */}
         <div className="flex flex-col items-center gap-1 px-2 min-w-[80px]">
           {isFinished || isLive ? (
             <>
@@ -315,21 +320,10 @@ export function FixtureList({ pollaId, matches, predictions, betDeadlineMinutes,
           {match.round && (
             <span className="text-[10px] text-muted-foreground text-center leading-tight max-w-[90px] break-words">{match.round}</span>
           )}
-          {/* Botón centrado debajo */}
+          {/* Badge de predicción */}
           <div className="mt-1">
-          {pred ? (
-            <Link
-              href={`/pollas/${pollaId}/prediccion/${match.id}`}
-              onClick={() => {
-                sessionStorage.setItem('fixtureScrollY', String(window.scrollY));
-                sessionStorage.setItem('fixtureReturnUrl', window.location.pathname + window.location.search);
-              }}
-            >
-              <Button
-                variant={open ? 'default' : 'outline'}
-                size="sm"
-                className={`gap-1 text-xs px-2 h-7 ${open ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : ''}`}
-              >
+            {pred ? (
+              <span className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold ${open ? 'bg-emerald-600 text-white' : 'border border-border bg-muted text-muted-foreground'}`}>
                 {open ? <Edit3 className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
                 {pred.home_goals}-{pred.away_goals}
                 {pred.wildcard_used && (
@@ -337,25 +331,16 @@ export function FixtureList({ pollaId, matches, predictions, betDeadlineMinutes,
                     {pred.wildcard_used.toUpperCase()}
                   </span>
                 )}
-              </Button>
-            </Link>
-          ) : open ? (
-            <Link
-              href={`/pollas/${pollaId}/prediccion/${match.id}`}
-              onClick={() => {
-                sessionStorage.setItem('fixtureScrollY', String(window.scrollY));
-                sessionStorage.setItem('fixtureReturnUrl', window.location.pathname + window.location.search);
-              }}
-            >
-              <Button size="sm" className="bg-[#0d3d1f] hover:bg-[#0d3d1f]/90 text-xs px-3 h-7">
+              </span>
+            ) : open ? (
+              <span className="inline-flex items-center rounded-lg bg-[#0d3d1f] text-white text-xs px-3 py-1 font-semibold">
                 Predecir
-              </Button>
-            </Link>
-          ) : (
-            <span className="rounded-md bg-muted px-2 py-1 text-[10px] text-muted-foreground">
-              Cerrado
-            </span>
-          )}
+              </span>
+            ) : (
+              <span className="rounded-md bg-muted px-2 py-1 text-[10px] text-muted-foreground">
+                Cerrado
+              </span>
+            )}
           </div>
         </div>
 
@@ -372,7 +357,7 @@ export function FixtureList({ pollaId, matches, predictions, betDeadlineMinutes,
           {awayWon && <span className="text-xs text-green-600 font-bold">✓</span>}
         </div>
 
-      </div>
+      </Link>
     );
   }
 

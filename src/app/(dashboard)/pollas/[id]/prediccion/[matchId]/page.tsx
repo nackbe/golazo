@@ -5,6 +5,16 @@ import { PredictionForm } from '@/components/features/dashboard/prediction-form'
 import { BackToFixtureLink } from '@/components/features/dashboard/back-to-fixture-link';
 import { MatchPredictionsList } from '@/components/features/dashboard/match-predictions-list';
 
+function formatMatchDate(iso: string) {
+  const d = new Date(iso);
+  return d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+
+function formatMatchTime(iso: string) {
+  const d = new Date(iso);
+  return d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+}
+
 interface Props {
   params: { id: string; matchId: string };
 }
@@ -124,17 +134,26 @@ export default async function PrediccionPage({ params }: Props) {
       </div>
 
       <div className="space-y-3">
-        <div className="flex items-center justify-center gap-4">
-          <div className={`flex flex-col items-center gap-1 ${!isOpen && match.home_goals !== null && match.away_goals !== null && (match.home_goals > match.away_goals) ? 'text-green-700' : ''}`}>
+        {/* Fecha, hora y jornada */}
+        <div className="rounded-xl border bg-muted/40 px-4 py-2.5 text-center space-y-0.5">
+          <p className="text-sm font-medium capitalize">{formatMatchDate(match.scheduled_at)}</p>
+          <p className="text-xs text-muted-foreground">{formatMatchTime(match.scheduled_at)}hs</p>
+          {match.round && (
+            <p className="text-xs text-muted-foreground">{match.round}</p>
+          )}
+        </div>
+
+        <div className="flex items-center justify-center gap-2">
+          <div className={`flex flex-col items-center gap-1 text-center w-[110px] ${!isOpen && match.home_goals !== null && match.away_goals !== null && (match.home_goals > match.away_goals) ? 'text-green-700' : ''}`}>
             {match.home_team?.logo_url && (
-              <img src={match.home_team.logo_url} alt="" className="h-10 w-10 object-contain" />
+              <img src={match.home_team.logo_url} alt="" className="h-12 w-12 object-contain" />
             )}
-            <span className="text-sm font-semibold">{match.home_team?.name || 'Local'}</span>
+            <span className="text-sm font-semibold leading-tight">{match.home_team?.name || 'Local'}</span>
           </div>
-          <div className="flex flex-col items-center px-4">
+          <div className="flex flex-col items-center px-3">
             {!isOpen && match.home_goals !== null && match.away_goals !== null ? (
               <>
-                <span className="text-2xl font-black">
+                <span className="text-2xl font-black tabular-nums">
                   {match.home_goals} - {match.away_goals}
                 </span>
                 {match.home_penalty_goals !== null && match.away_penalty_goals !== null && (
@@ -147,11 +166,11 @@ export default async function PrediccionPage({ params }: Props) {
               <span className="text-lg font-bold text-muted-foreground">vs</span>
             )}
           </div>
-          <div className={`flex flex-col items-center gap-1 ${!isOpen && match.home_goals !== null && match.away_goals !== null && (match.away_goals > match.home_goals) ? 'text-green-700' : ''}`}>
+          <div className={`flex flex-col items-center gap-1 text-center w-[110px] ${!isOpen && match.home_goals !== null && match.away_goals !== null && (match.away_goals > match.home_goals) ? 'text-green-700' : ''}`}>
             {match.away_team?.logo_url && (
-              <img src={match.away_team.logo_url} alt="" className="h-10 w-10 object-contain" />
+              <img src={match.away_team.logo_url} alt="" className="h-12 w-12 object-contain" />
             )}
-            <span className="text-sm font-semibold">{match.away_team?.name || 'Visitante'}</span>
+            <span className="text-sm font-semibold leading-tight">{match.away_team?.name || 'Visitante'}</span>
           </div>
         </div>
 

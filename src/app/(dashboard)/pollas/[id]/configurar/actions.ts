@@ -511,111 +511,138 @@ export async function syncFixtures(pollaId: string, selectedRounds?: string[]) {
     fixtures = fixtures.filter((f) => selectedRounds.includes(f.league?.round));
   }
 
-  // Consultar partidos existentes del torneo para no duplicar
+  // Consultar partidos existentes del torneo (id + api_football_id + status)
   const { data: existingMatches } = await admin
     .from('matches')
-    .select('api_football_id')
+    .select('id, api_football_id, status')
     .eq('tournament_id', tournament.id);
 
-  const existingApiIds = new Set(
+  const existingByApiId = new Map(
     (existingMatches || [])
-      .map((m) => m.api_football_id)
-      .filter((id): id is number => id !== null)
+      .filter((m): m is typeof m & { api_football_id: number } => m.api_football_id !== null)
+      .map((m) => [m.api_football_id, m])
   );
 
-  // Filtrar solo fixtures nuevos
-  const newFixtures = fixtures.filter(
-    (f) => f.fixture?.id && !existingApiIds.has(f.fixture.id)
-  );
+  // Separar: nuevos vs. existentes con resultado disponible en la API
+  const TERMINAL_STATUSES = new Set(['FT', 'AFT', 'CANC', 'ABD', 'AWD', 'WO']);
+  const LIVE_STATUSES = new Set(['1H', 'HT', '2H', 'ET', 'P', 'BT']);
 
-  if (newFixtures.length === 0) {
-    return {
-      success: true,
-      fixturesImported: 0,
-      message: 'No hay partidos nuevos para sincronizar. Todo está al día.',
-    };
-  }
-
-  // === BATCH PROCESSING solo para datos nuevos ===
-  const teamMap = new Map<number, { id: number; name: string; logo: string; code: string }>();
-  for (const f of newFixtures) {
-    const ht = f.teams?.home;
-    const at = f.teams?.away;
-    if (ht?.id) teamMap.set(ht.id, ht);
-    if (at?.id) teamMap.set(at.id, at);
-  }
-  const teamsList = Array.from(teamMap.values());
-
-  const teamApiIds = teamsList.map((t) => t.id);
-  const { data: existingTeams } = await admin
-    .from('teams')
-    .select('id, api_football_id')
-    .in('api_football_id', teamApiIds);
-
-  const existingMap = new Map<number, string>();
-  for (const t of existingTeams || []) {
-    if (t.api_football_id) existingMap.set(t.api_football_id, t.id);
-  }
-
-  const teamsToInsert = teamsList
-    .filter((t) => !existingMap.has(t.id))
-    .map((t) => ({
-      api_football_id: t.id,
-      name: t.name,
-      logo_url: t.logo,
-      code: t.code,
-    }));
-
-  if (teamsToInsert.length > 0) {
-    const { data: insertedTeams } = await admin
-      .from('teams')
-      .insert(teamsToInsert)
-      .select('id, api_football_id');
-    for (const t of insertedTeams || []) {
-      if (t.api_football_id) existingMap.set(t.api_football_id, t.id);
-    }
-  }
-
-  const matchesToInsert = newFixtures.map((f) => {
+  const newFixtures = fixtures.filter((f) => f.fixture?.id && !existingByApiId.has(f.fixture.id));
+  const fixturesToUpdate = fixtures.filter((f) => {
+    if (!f.fixture?.id) return false;
+    const existing = existingByApiId.get(f.fixture.id);
+    if (!existing) return false;
+    // Solo actualizar si la API tiene nuevo estado (terminó o tiene goles)
     const apiStatus = f.fixture?.status?.short;
-    const isFinished = apiStatus === 'FT' || apiStatus === 'AFT';
-    return {
-      tournament_id: tournament.id,
-      api_football_id: f.fixture?.id ?? null,
-      home_team_id: existingMap.get(f.teams?.home?.id) ?? null,
-      away_team_id: existingMap.get(f.teams?.away?.id) ?? null,
+    const alreadyFinal = TERMINAL_STATUSES.has(existing.status || '');
+    if (alreadyFinal) return false;
+    return TERMINAL_STATUSES.has(apiStatus || '') || LIVE_STATUSES.has(apiStatus || '');
+  });
+
+  // === Insertar nuevos fixtures ===
+  let fixturesInserted = 0;
+  if (newFixtures.length > 0) {
+    const teamMap = new Map<number, { id: number; name: string; logo: string; code: string }>();
+    for (const f of newFixtures) {
+      const ht = f.teams?.home;
+      const at = f.teams?.away;
+      if (ht?.id) teamMap.set(ht.id, ht);
+      if (at?.id) teamMap.set(at.id, at);
+    }
+
+    const teamApiIds = Array.from(teamMap.keys());
+    const { data: existingTeams } = await admin
+      .from('teams')
+      .select('id, api_football_id')
+      .in('api_football_id', teamApiIds);
+
+    const existingTeamMap = new Map<number, string>();
+    for (const t of existingTeams || []) {
+      if (t.api_football_id) existingTeamMap.set(t.api_football_id, t.id);
+    }
+
+    const teamsToInsert = Array.from(teamMap.values())
+      .filter((t) => !existingTeamMap.has(t.id))
+      .map((t) => ({ api_football_id: t.id, name: t.name, logo_url: t.logo, code: t.code }));
+
+    if (teamsToInsert.length > 0) {
+      const { data: insertedTeams } = await admin.from('teams').insert(teamsToInsert).select('id, api_football_id');
+      for (const t of insertedTeams || []) {
+        if (t.api_football_id) existingTeamMap.set(t.api_football_id, t.id);
+      }
+    }
+
+    const matchesToInsert = newFixtures.map((f) => {
+      const apiStatus = f.fixture?.status?.short;
+      const isFinished = TERMINAL_STATUSES.has(apiStatus || '');
+      return {
+        tournament_id: tournament.id,
+        api_football_id: f.fixture?.id ?? null,
+        home_team_id: existingTeamMap.get(f.teams?.home?.id) ?? null,
+        away_team_id: existingTeamMap.get(f.teams?.away?.id) ?? null,
+        home_goals: isFinished ? f.goals?.home ?? null : null,
+        away_goals: isFinished ? f.goals?.away ?? null : null,
+        home_penalty_goals: isFinished ? f.score?.penalty?.home ?? null : null,
+        away_penalty_goals: isFinished ? f.score?.penalty?.away ?? null : null,
+        status: apiStatus || 'NS',
+        round: f.league?.round || 'Fase de grupos',
+        scheduled_at: f.fixture?.date,
+        venue: f.fixture?.venue?.name || null,
+      };
+    });
+
+    await admin.from('matches').insert(matchesToInsert);
+    fixturesInserted = matchesToInsert.length;
+  }
+
+  // === Actualizar resultados de partidos existentes ===
+  let fixturesUpdated = 0;
+  for (const f of fixturesToUpdate) {
+    const existing = existingByApiId.get(f.fixture.id)!;
+    const apiStatus = f.fixture?.status?.short;
+    const isFinished = TERMINAL_STATUSES.has(apiStatus || '');
+    await admin.from('matches').update({
+      status: apiStatus,
       home_goals: isFinished ? f.goals?.home ?? null : null,
       away_goals: isFinished ? f.goals?.away ?? null : null,
       home_penalty_goals: isFinished ? f.score?.penalty?.home ?? null : null,
       away_penalty_goals: isFinished ? f.score?.penalty?.away ?? null : null,
-      status: apiStatus || 'NS',
-      round: f.league?.round || 'Fase de grupos',
-      scheduled_at: f.fixture?.date,
-      venue: f.fixture?.venue?.name || null,
-    };
-  });
+    }).eq('id', existing.id);
+    fixturesUpdated++;
+  }
 
-  await admin.from('matches').insert(matchesToInsert);
+  if (fixturesInserted === 0 && fixturesUpdated === 0) {
+    return {
+      success: true,
+      fixturesImported: 0,
+      message: 'No hay partidos nuevos ni resultados pendientes. Todo está al día.',
+    };
+  }
 
   await logApiUsage(user.id, 'sync_fixtures', user.id, {
     tournament_id: tournament.id,
     api_football_id: tournament.api_football_id,
-    fixtures_count: matchesToInsert.length,
+    inserted: fixturesInserted,
+    updated: fixturesUpdated,
   });
 
-  // Calcular puntos automáticamente para partidos terminados recién sincronizados
+  // Calcular puntos para partidos recién terminados
   try {
     await batchCalculateMatchPoints(pollaId);
   } catch (e: any) {
     console.error('Error auto-calculando puntos después de syncFixtures:', e);
   }
 
+  const parts = [];
+  if (fixturesInserted > 0) parts.push(`${fixturesInserted} partido${fixturesInserted !== 1 ? 's' : ''} nuevos`);
+  if (fixturesUpdated > 0) parts.push(`${fixturesUpdated} resultado${fixturesUpdated !== 1 ? 's' : ''} actualizados`);
+
   revalidatePath(`/pollas/${pollaId}/configurar`);
   revalidatePath(`/pollas/${pollaId}/fixture`);
   return {
     success: true,
-    fixturesImported: matchesToInsert.length,
-    message: `Se agregaron ${matchesToInsert.length} partido${matchesToInsert.length !== 1 ? 's' : ''} nuevos.`,
+    fixturesImported: fixturesInserted + fixturesUpdated,
+    message: `Sincronización completa: ${parts.join(', ')}.`,
     warning: apiError,
   };
 }
