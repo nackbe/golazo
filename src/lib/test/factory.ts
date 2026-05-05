@@ -33,21 +33,22 @@ export async function createTestPolla(overrides?: { name?: string; point_system?
 
   const { data: polla } = await admin
     .from('pollas')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .insert({
       name: overrides?.name || '__TEST_POLL__',
       code: `TEST${Math.floor(Math.random() * 100000)}`,
       tournament_id: tournament.id,
       admin_id: existingUser.id,
-      status: 'active',
-      point_system: overrides?.point_system || {
+      status: 'active' as const,
+      point_system: (overrides?.point_system || {
         correct_result: 1, home_goals: 1, away_goals: 1,
         exact_score: 3, goal_difference: 1, total_goals: 1,
-      },
-      wildcards: [{ type: 'x2', quantity: 2 }, { type: 'x3', quantity: 1 }],
+      }) as any,
+      wildcards: [{ type: 'x2', quantity: 2 }, { type: 'x3', quantity: 1 }] as any,
       special_point_system: {
         champion: 10, finalist: 5, third_place: 3,
         least_goals_against: 5, worst_team: 4, top_scorer_team: 5,
-      },
+      } as any,
       auto_random_prediction: false,
       admin_plays: true,
       auto_approve: true,
@@ -116,7 +117,7 @@ export async function createTestMatches(
 export async function createTestPredictions(
   pollaId: string,
   userId: string,
-  predictions: Array<{ match_id: string; home_goals: number; away_goals: number; wildcard_used?: string | null }>
+  predictions: Array<{ match_id: string; home_goals: number; away_goals: number; wildcard_used?: 'x2' | 'x3' | null }>
 ) {
   const admin = createAdminClient();
 

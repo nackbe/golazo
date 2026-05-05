@@ -202,7 +202,7 @@ async function runSeed() {
   // 5. Miembros
   section('Agregando miembros...');
   const { error: membErr } = await admin.from('polla_members').insert(
-    profiles.map(p => ({ polla_id: polla.id, user_id: p.id, alias: p.alias, status: 'approved', total_points: 0 }))
+    profiles.map(p => ({ polla_id: polla.id, user_id: p.id, alias: p.alias!, status: 'approved' as const, total_points: 0 }))
   );
   if (membErr) throw new Error(`Error al agregar miembros: ${membErr.message}`);
   log(`${profiles.length} miembros aprobados`);
@@ -233,15 +233,15 @@ async function runSeed() {
   // 7. Predicciones
   section('Creando predicciones...');
 
-  for (const [uIdx, profile] of profiles.entries()) {
+  for (const [uIdx, profile] of Array.from(profiles.entries())) {
     let wcX2Used = 0;
     let wcX3Used = 0;
-    const preds: object[] = [];
+    const preds: Array<{ polla_id: string; user_id: string; match_id: string; home_goals: number; away_goals: number; wildcard_used: 'x2' | 'x3' | null }> = [];
 
     for (let mIdx = 0; mIdx < MATCHES.length; mIdx++) {
       const real = MATCHES[mIdx].result;
       let pred: Score;
-      let wildcard: string | null = null;
+      let wildcard: 'x2' | 'x3' | null = null;
 
       if (uIdx === 0) {
         // ── El Oráculo: 6 exactos, 2 malos, exacto x3, resto random
