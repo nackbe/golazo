@@ -14,6 +14,7 @@ export interface Database {
           id: string
           alias: string | null
           avatar_url: string | null
+          email: string | null
           created_at: string
           updated_at: string
           is_system_admin: boolean | null
@@ -22,6 +23,7 @@ export interface Database {
           id: string
           alias?: string | null
           avatar_url?: string | null
+          email?: string | null
           created_at?: string
           updated_at?: string
           is_system_admin?: boolean | null
@@ -30,6 +32,7 @@ export interface Database {
           id?: string
           alias?: string | null
           avatar_url?: string | null
+          email?: string | null
           created_at?: string
           updated_at?: string
           is_system_admin?: boolean | null
@@ -206,6 +209,7 @@ export interface Database {
           admin_id: string
           status: 'draft' | 'open' | 'active' | 'finished' | null
           auto_approve: boolean | null
+          admin_plays: boolean | null
           bet_deadline_minutes: number | null
           point_system: Json | null
           wildcards: Json | null
@@ -221,6 +225,7 @@ export interface Database {
           admin_id: string
           status?: 'draft' | 'open' | 'active' | 'finished' | null
           auto_approve?: boolean | null
+          admin_plays?: boolean | null
           bet_deadline_minutes?: number | null
           point_system?: Json | null
           wildcards?: Json | null
@@ -236,6 +241,7 @@ export interface Database {
           admin_id?: string
           status?: 'draft' | 'open' | 'active' | 'finished' | null
           auto_approve?: boolean | null
+          admin_plays?: boolean | null
           bet_deadline_minutes?: number | null
           point_system?: Json | null
           wildcards?: Json | null

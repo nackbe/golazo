@@ -1750,3 +1750,127 @@ window.location.href = returnUrl;
 | 5 | **Wildcard precedence bug** | ✅ Corregido con `??` y paréntesis |
 
 ---
+
+---
+
+## CAMBIOS SESIÓN MAYO 2026 — Prediction feedback, Admin plays toggle, Cron Vercel, PWA icons
+
+### 1. Prediction result feedback
+**Archivos:** `src/components/features/dashboard/fixture-list.tsx`, `src/app/(dashboard)/pollas/[id]/prediccion/[matchId]/page.tsx`
+
+**Cambio:** Cuando un partido terminó (status FT/AFT), tanto la tarjeta del fixture como la página de predicción muestran feedback visual del resultado de la predicción del usuario:
+- 🎯 **Exacto** — acertó el marcador exacto
+- ✓ **Acertaste** — acertó el resultado (ganador/empate) pero no el marcador exacto
+- ✗ **Fallaste** — no acertó el resultado
+
+**Implementación en fixture card:**
+- Badge visual alineado a la derecha, debajo de la predicción del usuario
+- Color verde para Exacto/Acertaste, rojo para Fallaste
+- Solo aparece cuando `isFinished && pred` (partido terminado + usuario tiene predicción)
+
+**Implementación en página de predicción:**
+- Bloque grande encima del formulario con el emoji + texto
+- Calculado comparando `pred.home_goals`/`pred.away_goals` vs `match.home_goals`/`match.away_goals`
+
+### 2. Admin plays toggle
+**Archivos:** `src/components/features/dashboard/polla-settings-form.tsx`, `src/app/(dashboard)/pollas/[id]/configurar/actions.ts`, `src/app/(dashboard)/pollas/[id]/page.tsx`
+
+**Cambio:** Nuevo toggle en Configurar → Configuración general: "El admin juega en el ranking".
+- Default: `true` (el admin participa como cualquier miembro)
+- Cuando está `false`: el admin se excluye del leaderboard query
+- Persiste en columna `admin_plays BOOLEAN DEFAULT TRUE` en tabla `pollas`
+
+**Implementación:**
+- `polla-settings-form.tsx`: toggle con `useState(adminPlays)`, enviado como `fd.set('admin_plays', adminPlays ? 'true' : 'false')`
+- `actions.ts`: lee `formData.get('admin_plays') !== 'false'`, incluye en `updateData`
+- `page.tsx` (detalle de polla): `(polla as any).admin_plays ?? true`, si es `false` filtra al admin del array de miembros antes de renderizar el leaderboard
+
+**Migración requerida:** `0024_admin_plays_column.sql`
+```sql
+ALTER TABLE public.pollas ADD COLUMN IF NOT EXISTS admin_plays BOOLEAN DEFAULT TRUE NOT NULL;
+```
+
+### 3. Cron Vercel
+**Archivos:** `vercel.json`, `src/app/api/sync/route.ts`
+
+**Cambio:** El cron ahora se ejecuta nativamente via Vercel Cron Jobs (gratis en plan Hobby para 1 job).
+- `vercel.json`: configura `crons` con path `/api/sync` y schedule `*/5 * * * *` (cada 5 minutos)
+- `/api/sync/route.ts`: ahora exporta tanto `GET` (para Vercel Cron) como `POST` (para cron-job.org legacy)
+- Vercel Cron envía requests `GET` sin `CRON_SECRET`, por lo que la autenticación del cron usa `request.headers.get('x-vercel-signature')` como fallback
+
+**Nota:** Vercel Cron en plan Hobby tiene cierta imprecisión (puede ejecutarse con ±1 min de delay). Para torneos en vivo esto es aceptable. Si se necesita precisión de 2 min, mantener cron-job.org como backup.
+
+### 4. PWA Icons
+**Archivos:** `public/icon-192x192.png`, `public/icon-512x512.png`
+
+**Cambio:** Generados iconos PWA faltantes. Diseño: círculo verde (#16a34a) con pelota de fútbol blanca estilo hexágonos/pentágonos.
+- `icon-192x192.png` — para homescreen en Android
+- `icon-512x512.png` — para splash screen en Android
+
+El `manifest.json` ya los referenciaba pero los archivos no existían. Ahora la PWA tiene todos los assets básicos (falta service worker para ser instalable).
+
+---
+
+## PENDIENTES CRÍTICOS (requieren acción manual)
+
+### Migraciones en Supabase SQL Editor
+Ejecutar en orden:
+
+1. **0021** — Fix RLS polla_members SELECT (para que miembros vean ranking sin workaround de admin client)
+2. **0022** — Agregar email a profiles (nice to have, no bloqueante)
+3. **0023** — Expandir CHECK de matches.status (**CRÍTICO** — sin esto loadFixtures falla para Libertadores y otros torneos con partidos postergados)
+4. **0024** — Agregar admin_plays a pollas (**CRÍTICO** — sin esto el toggle "El admin juega" falla al guardar)
+
+### Post-MVP (no bloqueantes)
+- PWA service worker (instalable)
+- Tests (carpeta `tests/` vacía)
+- Notificaciones push/email
+- UI para marcar resultados especiales manualmente en ligas sin final
+- Gráfica de evolución del ranking
+
+---
+
+---
+
+## FIX POST-SESIÓN: Tipos de Supabase desactualizados (database.ts)
+
+**Problema descubierto:** El toggle "El admin juega en el ranking" no aparecía en la UI a pesar de que el código y la migración 0024 estaban correctos.
+
+**Causa raíz:** `src/types/database.ts` no tenía los campos nuevos de las migraciones 0022–0024:
+- `profiles.email` — faltaba
+- `pollas.admin_plays` — faltaba
+
+Esto causaba que TypeScript no tipara correctamente los valores y en algunos flujos el campo no llegaba al Client Component.
+
+**Fix:**
+```typescript
+// Agregado a profiles.Row / Insert / Update
+email: string | null
+
+// Agregado a pollas.Row / Insert / Update
+admin_plays: boolean | null
+```
+
+También se limpiaron los casts `(polla as any).admin_plays` reemplazándolos por `polla.admin_plays`.
+
+**Regla aprendida:** Cada vez que se aplica una migración que agrega/elimina/modifica columnas, hay que regenerar `database.ts` (o actualizarlo manualmente si no se tiene acceso al CLI de Supabase).
+
+---
+
+## PENDIENTES ACTUALIZADOS (Mayo 2026)
+
+### ✅ Resueltos en esta sesión
+- Prediction result feedback (🎯 Exacto / ✓ Acertaste / ✗ Fallaste)
+- Admin plays toggle + fix de tipos
+- Cron Vercel configurado
+- Iconos PWA generados
+- Tipos de Supabase actualizados (database.ts)
+
+### ⏳ Post-MVP (no bloqueantes)
+- PWA service worker (instalable)
+- Tests (carpeta `tests/` vacía)
+- Notificaciones push/email
+- UI para marcar resultados especiales manualmente en ligas sin final
+- Gráfica de evolución del ranking
+
+---

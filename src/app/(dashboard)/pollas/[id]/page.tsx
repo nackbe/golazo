@@ -61,7 +61,7 @@ export default async function PollaDetailPage({ params }: Props) {
     .eq('status', 'approved');
 
   // Excluir al admin del ranking si admin_plays = false
-  const adminPlays = (polla as any).admin_plays ?? true;
+  const adminPlays = polla.admin_plays ?? true;
   if (!adminPlays) {
     membersQuery = membersQuery.neq('user_id', polla.admin_id);
   }
