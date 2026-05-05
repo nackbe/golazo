@@ -49,7 +49,12 @@ function updateMatchFromFixture(
 function isAuthorized(request: Request): boolean {
   const authHeader = request.headers.get('authorization');
   const expected = `Bearer ${process.env.CRON_SECRET}`;
-  // Vercel Cron sends Authorization: Bearer <CRON_SECRET> automatically
+  // Debug log (truncated for security) — remove after fixing 401
+  const truncate = (s: string | null) => s ? `${s.slice(0, 12)}...${s.slice(-4)}` : 'null';
+  console.log('[DEBUG] auth header received:', truncate(authHeader));
+  console.log('[DEBUG] auth expected:', truncate(expected));
+  console.log('[DEBUG] match:', authHeader === expected);
+  console.log('[DEBUG] CRON_SECRET set:', !!process.env.CRON_SECRET);
   return authHeader === expected;
 }
 
