@@ -52,10 +52,17 @@
 - **Supabase Auth:** Site URL y redirect URL apuntando a producción
 - **Pendiente:** configurar cron-job.org → `POST https://golazo-puce.vercel.app/api/sync` cada 2 min con `Authorization: Bearer CRON_SECRET`
 
-### Fixes post-deploy aplicados
-- OAuth móvil: callback usa `NEXT_PUBLIC_APP_URL` en lugar de `window.location.origin` (evita redirect a localhost)
-- Inputs de predicción: `onFocus → select()` para reemplazar el 0 directamente al tipear
-- Fixture card: rediseño 3 columnas — logo+nombre apilados verticalmente, nombres completos sin truncar, botón centrado bajo el marcador
+### Fixes post-deploy aplicados (sesión 2026-05-05)
+- Auth redirect a localhost: causa era `NEXT_PUBLIC_APP_URL=http://localhost:3001` en Vercel. Fix: usar solo `window.location.origin` en `login-form.tsx`.
+- Inputs de predicción: `onFocus → select()` + botones +/- + `inputMode="numeric"`.
+- Fixture card: tarjeta completa clickeable (todo el div es un `<Link>`).
+- Prediction detail page: fecha, hora y jornada visibles; nombres de equipo con `w-[110px]`.
+- Ranking invisible a miembros: workaround con admin client en `/pollas/[id]/page.tsx`. Fix real: migración 0021 (pendiente en Supabase).
+- syncFixtures: ahora actualiza resultados existentes además de insertar nuevos.
+- polla-settings-form: `ps()` y `sps()` estaban cruzadas — los puntos se guardaban en la tabla equivocada.
+- loadFixtures: falla silenciosa con status `PST`/`TBD` etc. Fix: `normalizeMatchStatus()` + verificar error del upsert. Migración 0023 pendiente en Supabase.
+- Polla list: badge Admin/Jugador, fecha de creación, filtros por rol/estado.
+- Tournament search: auto-confirma al seleccionar (sin botón "Confirmar selección").
 
 ### Flujo de autenticación — FUNCIONANDO
 - Google OAuth configurado y operativo.
@@ -179,8 +186,28 @@ Las migraciones se aplican manualmente en el SQL Editor de Supabase. Todas las q
 | `0018_api_rate_limits.sql` | Tabla `api_usage_logs`. Funciones RPC `check_rate_limit()` y `log_api_usage()` SECURITY DEFINER para controlar abuso sin exponer la lógica al cliente. |
 | `0019_cron_optimizations.sql` | Columna `last_fixture_sync_at TIMESTAMPTZ` en `tournaments`. Índice parcial. Permite al cron evitar re-sincronizar torneos recién actualizados. |
 | `0020_system_settings.sql` | Tabla `system_settings (key TEXT PK, value JSONB)`. Columna `is_system_admin BOOLEAN` en `profiles`. Seed inicial con 10 parámetros del sistema. |
+| `0021_fix_polla_members_select_policy.sql` | **⚠️ PENDIENTE aplicar en Supabase.** Reemplaza policy SELECT de `polla_members` "Users can view own memberships" (solo veía fila propia) por "Members can view all members of their pollas" — usa `is_polla_member(polla_id)`. Sin esta migración los miembros no ven el ranking. Workaround activo: `/pollas/[id]/page.tsx` usa admin client para la query del leaderboard. |
+| `0022_add_email_to_profiles.sql` | **⚠️ PENDIENTE aplicar en Supabase.** Agrega columna `email TEXT` a `profiles`. Backfill desde `auth.users`. Actualiza trigger `handle_new_user` para guardar email al registrar usuario. |
+| `0023_expand_match_status.sql` | **⚠️ PENDIENTE aplicar en Supabase.** Expande el CHECK constraint de `matches.status` para incluir todos los status de API-Football: `PST`, `TBD`, `ABD`, `AWD`, `WO`, `SUSP`, `INT`, `AET`, `PEN`, `BT`, `LIVE` además de los 9 originales. Sin esta migración `loadFixtures` falla silenciosamente para torneos con partidos postergados (ej: Libertadores). |
 
-### 4.3. Lección aprendida: tablas creadas via SQL necesitan GRANTs manuales
+### 4.3. Admin client para leer ranking (workaround RLS)
+
+Mientras la migración 0021 no esté aplicada en producción, el leaderboard en `/pollas/[id]/page.tsx` usa `createAdminClient()` en lugar del cliente normal para la query de `polla_members`. Esto es seguro porque ya se verificó que el usuario es admin o miembro aprobado antes de ejecutarla.
+
+```typescript
+// BIEN — workaround mientras 0021 no está aplicada
+const admin = createAdminClient();
+const { data: members } = await admin
+  .from('polla_members')
+  .select('alias, total_points, user_id, profiles(avatar_url)')
+  .eq('polla_id', params.id)
+  .eq('status', 'approved')
+  .order('total_points', { ascending: false });
+```
+
+Una vez aplicada la migración 0021, esta query puede volver al cliente normal de usuario.
+
+### 4.4. Lección aprendida: tablas creadas via SQL necesitan GRANTs manuales
 
 Supabase solo otorga permisos automáticamente a `anon`/`authenticated` cuando se crean tablas **desde el dashboard**. Las tablas creadas en migraciones SQL necesitan:
 
@@ -192,7 +219,7 @@ GRANT SELECT ON TABLE public.mi_tabla TO anon;
 
 Si esto falta: error `permission denied for table X`. Si además RLS está activo sin policies: error `new row violates row-level security policy`.
 
-### 4.4. Tablas de sistema vs. tablas de usuario
+### 4.5. Tablas de sistema vs. tablas de usuario
 
 | Tipo | Tablas | Acceso de escritura |
 |------|--------|---------------------|
@@ -646,6 +673,29 @@ for (const fixture of fixtures) {
 await admin.from('matches').insert(fixtures.map(f => ({ ... })));
 ```
 
+### Siempre verificar el error de upsert/insert en Supabase
+```typescript
+// MAL — si el upsert falla (ej: CHECK constraint), no se sabe y se devuelve éxito falso
+await admin.from('matches').upsert(rows, { onConflict: 'api_football_id' });
+return { success: true, count: rows.length }; // MENTIRA si hubo error
+
+// BIEN — verificar error explícitamente
+const { error } = await admin.from('matches').upsert(rows, { onConflict: 'api_football_id' });
+if (error) return { error: `Error al guardar: ${error.message}` };
+return { success: true, count: rows.length };
+```
+
+### Status de partidos de API-Football — no asumir los 9 originales
+La API devuelve status que el schema original no contemplaba: `PST` (postergado), `TBD`, `ABD`, `AWD`, `WO`, `SUSP`, `INT`, `AET`, `PEN`, `BT`, `LIVE`. Usar siempre `normalizeMatchStatus()` antes de insertar:
+```typescript
+// En actions.ts
+const KNOWN_STATUSES = new Set(['NS','TBD','PST','1H','HT','2H','ET','BT','P','SUSP','INT','FT','AET','PEN','AFT','CANC','ABD','AWD','WO','LIVE']);
+function normalizeMatchStatus(s?: string): string {
+  if (!s) return 'NS';
+  return KNOWN_STATUSES.has(s) ? s : 'NS';
+}
+```
+
 ### DiceBear pixel-art: solo seed + backgroundColor, nada más
 ```typescript
 // MAL — hair[] y beardProbability no son válidos en pixel-art v9, rompen la URL
@@ -654,6 +704,117 @@ await admin.from('matches').insert(fixtures.map(f => ({ ... })));
 // BIEN
 `https://api.dicebear.com/9.x/pixel-art/svg?seed=X&backgroundColor=fef08a`
 ```
+
+---
+
+## 15. Bugs Corregidos — Sesión 2026-05-05
+
+### Bug A: loadFixtures devuelve éxito pero no inserta nada (Libertadores)
+**Síntoma:** Al cargar partidos, el mensaje dice "126 partidos cargados" pero la página sigue mostrando "Tenés que cargar partidos" y no hay ninguno en la DB.
+**Causa:** El CHECK constraint original en `matches.status` solo permitía 9 valores: `('NS','1H','HT','2H','ET','P','FT','AFT','CANC')`. La Copa Libertadores (y muchos otros torneos) tiene partidos con status `PST` (postponed), `TBD`, `ABD`, `WO`, etc. El upsert fallaba con constraint violation para cualquier fixture con status desconocido. **El código no verificaba el error del upsert**, así que devolvía `{ success: true, fixturesImported: 126 }` contando el array de entrada, no las filas realmente insertadas.
+**Fix en código:** `normalizeMatchStatus()` mapea status desconocidos a `NS` como fallback. Se agrega `const { error: upsertError } = await admin.from('matches').upsert(...)` y se verifica el error antes de continuar.
+**Fix en DB:** Migración `0023_expand_match_status.sql` — expande el CHECK para incluir todos los status conocidos de API-Football. **⚠️ Pendiente aplicar en Supabase SQL Editor.**
+**Regla aprendida:** Siempre verificar el error de operaciones de escritura en Supabase. No asumir que si no hay excepción, la operación funcionó.
+
+### Bug B: ps() y sps() cruzados en polla-settings-form (puntos no se guardaban)
+**Síntoma:** Al guardar configuración de puntos desde la página de configurar, los valores se mezclaban entre `point_system` y `special_point_system`.
+**Causa:** En `POINT_FIELDS` (predicciones de partido) se usaba `sps()` que lee `special_point_system`, y en `SPECIAL_PREDICTION_FIELDS` se usaba `ps()` que lee `point_system`. Estaban completamente invertidas.
+**Fix:** `POINT_FIELDS` usa `ps(polla, f.key, f.defaultVal)`, `SPECIAL_PREDICTION_FIELDS` usa `sps(polla, f.key, f.defaultVal)`.
+
+### Bug C: Miembros no ven el ranking de otros jugadores
+**Síntoma:** Un usuario que es miembro (no admin) entra a la polla y ve el leaderboard vacío o solo con su propio nombre.
+**Causa:** La RLS policy "Users can view own memberships" en `polla_members` solo permitía `user_id = auth.uid() OR is_polla_admin(polla_id)` — cada miembro solo veía su propia fila.
+**Fix:** Workaround inmediato: usar admin client para la query del leaderboard en `/pollas/[id]/page.tsx` (ya verificamos que el usuario tiene acceso antes de ejecutarla). Fix permanente: migración 0021 cambia la policy a `is_polla_member(polla_id) OR is_polla_admin(polla_id)` para que cualquier miembro aprobado pueda ver todos los miembros de sus pollas.
+
+### Bug D: syncFixtures no actualizaba resultados existentes
+**Síntoma:** Al sincronizar, se agregaban partidos nuevos pero los goles de partidos ya terminados no se actualizaban en la DB.
+**Causa:** La función solo filtraba `newFixtures` (los que no existían) y los insertaba. Los fixtures existentes en la DB se ignoraban por completo.
+**Fix:** Reescritura de `syncFixtures` para separar en `newFixtures` (insertar) y `fixturesToUpdate` (actualizar status y goles si la API tiene un estado terminal o en vivo que el registro en DB no tiene). Retorna mensaje detallado: "X nuevos, Y actualizados".
+
+### Bug E: Auth redirect a localhost con magic link / Google OAuth
+**Síntoma:** Al hacer login con magic link o Google, el email/redirect apuntaba a `http://localhost:3001/...`.
+**Causa:** `NEXT_PUBLIC_APP_URL=http://localhost:3001` estaba seteado en Vercel (copiado de `.env.local`). El código usaba `process.env.NEXT_PUBLIC_APP_URL || window.location.origin` — como la variable era truthy (aunque incorrecta), nunca caía al fallback.
+**Fix:** Se cambió a usar solo `window.location.origin` para construir el callback URL. Siempre correcto en el browser independientemente de las env vars.
+
+---
+
+## 16. UX Improvements — Sesión 2026-05-05
+
+### Fixture card — tarjeta completa clickeable
+- **Antes:** Solo el botón pequeño "Predecir" / "2-1" era clickeable.
+- **Ahora:** Toda la tarjeta (`<Link>` wrappea el grid completo). Los inner Buttons se reemplazaron por `<span>` badges visuales (sin link anidado — HTML inválido).
+- El badge de predicción muestra la misma info: marcador con ícono lápiz/ojo, wildcard, "Predecir", "Cerrado".
+- `hover:bg-accent/50 active:scale-[0.99]` para feedback táctil.
+
+### Prediction detail page — fecha, hora y round
+- Se agregó bloque de fecha/hora/jornada encima del display de equipos:
+  ```
+  ┌─────────────────────────────┐
+  │  miércoles, 7 de mayo       │
+  │  21:00hs                    │
+  │  Fecha 3                    │
+  └─────────────────────────────┘
+  ```
+- Funciones `formatMatchDate()` y `formatMatchTime()` con locale `es-ES`.
+- Equipos ahora tienen `w-[110px]` para evitar que los nombres largos se desborden.
+
+### Polla list — badges y filtros
+- Cards ahora muestran badge "Admin" (ámbar) o "Jugador" (azul) según el rol del usuario en esa polla.
+- Fecha de creación visible en cada card.
+- Nuevo componente `PollaListFilters` (client-side) con filtros por rol (todas / soy admin / soy jugador) y por estado (active / open / finished / draft).
+- Lista ordenada por `created_at DESC`.
+
+### Tournament search — auto-confirmar
+- **Antes:** Al seleccionar un torneo del buscador, aparecía pantalla intermedia con selector de temporada y botón "Confirmar selección".
+- **Ahora:** Al clickear un torneo, se selecciona la temporada actual (o la más reciente disponible) y se guarda inmediatamente, sin pantalla intermedia.
+- Si el torneo no tiene seasons disponibles, no hace nada (previene guardar datos inválidos).
+
+### Prediction form — inputs mejorados
+- Botones `<Minus>` y `<Plus>` flanqueando el input numérico.
+- `onFocus → e.target.select()` para limpiar el 0 al empezar a tipear.
+- `inputMode="numeric"` para mostrar teclado numérico en móvil.
+- `active:scale-95` para feedback táctil en los botones.
+- Botón `-` deshabilitado en 0, botón `+` deshabilitado en 20.
+
+---
+
+## 17. Pendientes Críticos (requieren acción manual en Supabase)
+
+### Migraciones pendientes de aplicar en producción
+Ir a Supabase SQL Editor y ejecutar en orden:
+
+**0021 — Fix RLS polla_members SELECT:**
+```sql
+DROP POLICY IF EXISTS "Users can view own memberships" ON public.polla_members;
+CREATE POLICY "Members can view all members of their pollas"
+  ON public.polla_members FOR SELECT USING (
+    public.is_polla_member(polla_id) OR public.is_polla_admin(polla_id)
+  );
+```
+
+**0022 — Agregar email a profiles:**
+```sql
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS email TEXT;
+UPDATE public.profiles p SET email = u.email FROM auth.users u WHERE p.id = u.id AND p.email IS NULL;
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.profiles (id, alias, avatar_url, email)
+  VALUES (NEW.id, NULL, NULL, NEW.email)
+  ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+```
+
+**0023 — Expandir CHECK de matches.status (CRÍTICO para cargar fixtures):**
+```sql
+ALTER TABLE public.matches DROP CONSTRAINT IF EXISTS matches_status_check;
+ALTER TABLE public.matches ADD CONSTRAINT matches_status_check
+  CHECK (status IN ('NS','TBD','PST','1H','HT','2H','ET','BT','P','SUSP','INT','FT','AET','PEN','AFT','CANC','ABD','AWD','WO','LIVE'));
+```
+
+Los archivos `.sql` completos están en `/supabase/migrations/`.
 
 ---
 
@@ -728,16 +889,17 @@ La página de fixtures (`/pollas/[id]/fixture`) usa el Client Component `Fixture
 - Cuando se ordena por fecha: partidos agrupados bajo header de fecha. Con otros ordenamientos: lista plana.
 
 ### Cards de partido
-- Grid 4 columnas: equipo local | marcador/vs + hora + fase | equipo visitante | botón
+- **Toda la tarjeta es un `<Link>`** — clickear en cualquier parte navega a la predicción del partido. `hover:bg-accent/50 active:scale-[0.99]` para feedback.
+- Grid 3 columnas: equipo local | marcador/vs + hora + fase + badge | equipo visitante
 - Logos de equipos (de API-Football)
 - Marcador en **negrita** para partidos terminados o en vivo
 - Penales: `(P) X - Y` debajo del marcador regular
 - Winner highlighting en verde, empate en ámbar
 - Badge `EN VIVO` en rojo para partidos en curso
-- Botón del partido:
-  - Sin predicción + abierto: "Predecir" (dark green)
-  - Con predicción + abierto: muestra marcador predicho en verde (editable con lápiz)
-  - Con predicción + cerrado: marcador predicho en outline (solo ver, con ojo)
+- Badge visual de predicción (no es botón interactivo — la navegación la maneja el Link externo):
+  - Sin predicción + abierto: "Predecir" (dark green span)
+  - Con predicción + abierto: marcador predicho en verde con ícono lápiz
+  - Con predicción + cerrado: marcador predicho en outline con ícono ojo
   - Sin predicción + cerrado: badge "Cerrado" (muted)
   - Badge X2/X3 en ámbar/púrpura si se usó comodín
 
