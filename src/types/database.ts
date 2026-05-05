@@ -643,6 +643,99 @@ export interface Database {
           }
         ]
       }
+      player_streaks: {
+        Row: {
+          id: string
+          polla_id: string
+          user_id: string
+          current_result_streak: number
+          max_result_streak: number
+          current_exact_streak: number
+          max_exact_streak: number
+          current_negative_streak: number
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          polla_id: string
+          user_id: string
+          current_result_streak?: number
+          max_result_streak?: number
+          current_exact_streak?: number
+          max_exact_streak?: number
+          current_negative_streak?: number
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          polla_id?: string
+          user_id?: string
+          current_result_streak?: number
+          max_result_streak?: number
+          current_exact_streak?: number
+          max_exact_streak?: number
+          current_negative_streak?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "player_streaks_polla_id_fkey"
+            columns: ["polla_id"]
+            isOneToOne: false
+            referencedRelation: "pollas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "player_streaks_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      player_badges: {
+        Row: {
+          id: string
+          user_id: string
+          badge_id: string
+          polla_id: string | null
+          earned_at: string
+          metadata: Json
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          badge_id: string
+          polla_id?: string | null
+          earned_at?: string
+          metadata?: Json
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          badge_id?: string
+          polla_id?: string | null
+          earned_at?: string
+          metadata?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "player_badges_polla_id_fkey"
+            columns: ["polla_id"]
+            isOneToOne: false
+            referencedRelation: "pollas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "player_badges_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
     }
     Views: {
       [_ in never]: never

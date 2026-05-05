@@ -99,9 +99,7 @@ export default async function ConfigurarPollaPage({ params }: Props) {
         </div>
       </div>
 
-      {pendingMembers && pendingMembers.length > 0 && (
-        <PendingMembersList pollaId={params.id} members={pendingMembers} />
-      )}
+      <PollaSettingsForm key={polla.status} polla={pollaProp} />
 
       {/* Selección de torneo */}
       {(polla.status === 'draft' || polla.status === 'open') && (
@@ -289,7 +287,9 @@ export default async function ConfigurarPollaPage({ params }: Props) {
         </div>
       )}
 
-      <PollaSettingsForm key={polla.status} polla={pollaProp} />
+      {pendingMembers && pendingMembers.length > 0 && (
+        <PendingMembersList pollaId={params.id} members={pendingMembers} />
+      )}
 
     </div>
   );

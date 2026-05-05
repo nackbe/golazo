@@ -1,47 +1,39 @@
 import { createAdminClient } from '@/lib/supabase/admin';
+import {
+  getPointSystem,
+  getSpecialPointSystem,
+  scoreMatchPrediction,
+  calculateTournamentStatsFromMatches,
+  type PointSystem,
+  type SpecialPointSystem,
+} from '@/lib/scoring';
+import { awardBadgesFromMatch } from '@/lib/badges';
 
-interface PointSystem {
-  correct_result: number;
-  home_goals: number;
-  away_goals: number;
-  exact_score: number;
-  goal_difference: number;
-  total_goals: number;
-}
+/**
+ * Registra el estado del ranking después de calcular puntos.
+ * Inserta en ranking_history la posición y total_points de cada miembro.
+ */
+async function recordRankingHistory(pollaId: string, matchId: string | null) {
+  const admin = createAdminClient();
 
-interface SpecialPointSystem {
-  champion: number;
-  finalist: number;
-  third_place: number;
-  least_goals_against: number;
-  worst_team: number;
-  top_scorer_team: number;
-}
+  const { data: members } = await admin
+    .from('polla_members')
+    .select('user_id, total_points')
+    .eq('polla_id', pollaId)
+    .eq('status', 'approved')
+    .order('total_points', { ascending: false });
 
-const DEFAULT_POINTS: PointSystem = {
-  correct_result: 1,
-  home_goals: 1,
-  away_goals: 1,
-  exact_score: 3,
-  goal_difference: 1,
-  total_goals: 1,
-};
+  if (!members || members.length === 0) return;
 
-const DEFAULT_SPECIAL_POINTS: SpecialPointSystem = {
-  champion: 10,
-  finalist: 5,
-  third_place: 3,
-  least_goals_against: 5,
-  worst_team: 4,
-  top_scorer_team: 5,
-};
+  const rows = members.map((m, index) => ({
+    polla_id: pollaId,
+    user_id: m.user_id,
+    match_id: matchId,
+    position: index + 1,
+    total_points: m.total_points || 0,
+  }));
 
-function getPointSystem(json: any): PointSystem {
-  return { ...DEFAULT_POINTS, ...(json || {}) };
-}
-
-function getSpecialPointSystem(json: any): SpecialPointSystem {
-  return { ...DEFAULT_SPECIAL_POINTS, ...(json || {}) };
+  await admin.from('ranking_history').insert(rows);
 }
 
 /**
@@ -88,7 +80,7 @@ export async function calculateMatchPoints(matchId: string) {
   // 1. Obtener resultado del partido
   const { data: match } = await admin
     .from('matches')
-    .select('id, home_goals, away_goals, status, tournament_id')
+    .select('id, home_goals, away_goals, status, tournament_id, round')
     .eq('id', matchId)
     .single();
 
@@ -131,53 +123,16 @@ export async function calculateMatchPoints(matchId: string) {
     if (!predictions || predictions.length === 0) continue;
 
     for (const pred of predictions) {
-      const predHome = pred.home_goals;
-      const predAway = pred.away_goals;
-      const predDiff = predHome - predAway;
-      const predTotal = predHome + predAway;
-
-      let points = 0;
-
-      // Resultado correcto (quién gana/empata)
-      const realResult = Math.sign(realDiff);
-      const predResult = Math.sign(predDiff);
-      if (realResult === predResult) {
-        points += ps.correct_result;
-      }
-
-      // Goles local exactos
-      if (realHome === predHome) {
-        points += ps.home_goals;
-      }
-
-      // Goles visitante exactos
-      if (realAway === predAway) {
-        points += ps.away_goals;
-      }
-
-      // Marcador exacto
-      if (realHome === predHome && realAway === predAway) {
-        points += ps.exact_score;
-      }
-
-      // Diferencia de goles exacta
-      if (realDiff === predDiff) {
-        points += ps.goal_difference;
-      }
-
-      // Total de goles exacto
-      if (realTotal === predTotal) {
-        points += ps.total_goals;
-      }
-
-      // Comodines
-      let finalPoints = points;
-      if (points > 0 && pred.wildcard_used === 'x2') {
-        finalPoints = points * 2;
-      } else if (points > 0 && pred.wildcard_used === 'x3') {
-        finalPoints = points * 3;
-      }
+      const points = scoreMatchPrediction({
+        realHome,
+        realAway,
+        predHome: pred.home_goals,
+        predAway: pred.away_goals,
+        ps,
+        wildcard: pred.wildcard_used as 'x2' | 'x3' | null,
+      });
       // Nota: si points === 0, el comodín se consume y no suma nada
+      const finalPoints = points;
 
       // 4. Upsert en match_points (idempotente)
       const { error: upsertError } = await admin
@@ -197,6 +152,21 @@ export async function calculateMatchPoints(matchId: string) {
         continue;
       }
 
+      // Badges & streaks
+      try {
+        const exact = realHome === pred.home_goals && realAway === pred.away_goals;
+        const correctResult = Math.sign(realHome - realAway) === Math.sign(pred.home_goals - pred.away_goals);
+        const isFinal = match.round ? (match.round.toLowerCase() === 'final' || match.round.toLowerCase() === 'grand final') : false;
+        await awardBadgesFromMatch(polla.id, pred.user_id, {
+          exact,
+          correctResult,
+          wildcardUsed: pred.wildcard_used,
+          isFinal,
+        });
+      } catch (badgeErr) {
+        console.error('Error awarding badges:', badgeErr);
+      }
+
       processed++;
     }
 
@@ -211,6 +181,7 @@ export async function calculateMatchPoints(matchId: string) {
       for (const member of members) {
         await recalculateMemberTotalPoints(polla.id, member.user_id);
       }
+      await recordRankingHistory(polla.id, matchId);
     }
   }
 
@@ -321,80 +292,29 @@ async function calculateTournamentStats(tournamentId: string) {
 
   if (!matches || matches.length < 2) return; // Muy pocos partidos para stats significativas
 
-  // Agregar stats por equipo
-  const stats = new Map<string, { gf: number; ga: number; played: number }>();
+  const stats = calculateTournamentStatsFromMatches(matches as import('@/lib/scoring').TournamentMatch[]);
 
-  for (const m of matches) {
-    if (m.home_goals === null || m.away_goals === null) continue;
-    if (!m.home_team_id || !m.away_team_id) continue;
-
-    const homeId = m.home_team_id;
-    const awayId = m.away_team_id;
-
-    if (!stats.has(homeId)) stats.set(homeId, { gf: 0, ga: 0, played: 0 });
-    if (!stats.has(awayId)) stats.set(awayId, { gf: 0, ga: 0, played: 0 });
-
-    const homeStats = stats.get(homeId)!;
-    const awayStats = stats.get(awayId)!;
-
-    homeStats.gf += m.home_goals;
-    homeStats.ga += m.away_goals;
-    homeStats.played++;
-
-    awayStats.gf += m.away_goals;
-    awayStats.ga += m.home_goals;
-    awayStats.played++;
-  }
-
-  if (stats.size === 0) return;
-
-  // Menos goles en contra
-  let leastGaTeam: string | null = null;
-  let leastGa = Infinity;
-  // Peor equipo (más goles en contra - más goles a favor, o solo más goles en contra)
-  let worstTeam: string | null = null;
-  let worstDiff = -Infinity;
-  // Máximo goleador
-  let topScorerTeam: string | null = null;
-  let topGf = -Infinity;
-
-  for (const [teamId, s] of Array.from(stats.entries())) {
-    if (s.ga < leastGa) {
-      leastGa = s.ga;
-      leastGaTeam = teamId;
-    }
-    const diff = s.gf - s.ga;
-    if (diff < worstDiff) {
-      worstDiff = diff;
-      worstTeam = teamId;
-    }
-    if (s.gf > topGf) {
-      topGf = s.gf;
-      topScorerTeam = teamId;
-    }
-  }
-
-  if (leastGaTeam) {
+  if (stats.least_goals_against) {
     await admin
       .from('tournament_special_results')
       .upsert(
-        { tournament_id: tournamentId, type: 'least_goals_against', team_id: leastGaTeam },
+        { tournament_id: tournamentId, type: 'least_goals_against', team_id: stats.least_goals_against },
         { onConflict: 'tournament_id, type' }
       );
   }
-  if (worstTeam) {
+  if (stats.worst_team) {
     await admin
       .from('tournament_special_results')
       .upsert(
-        { tournament_id: tournamentId, type: 'worst_team', team_id: worstTeam },
+        { tournament_id: tournamentId, type: 'worst_team', team_id: stats.worst_team },
         { onConflict: 'tournament_id, type' }
       );
   }
-  if (topScorerTeam) {
+  if (stats.top_scorer_team) {
     await admin
       .from('tournament_special_results')
       .upsert(
-        { tournament_id: tournamentId, type: 'top_scorer_team', team_id: topScorerTeam },
+        { tournament_id: tournamentId, type: 'top_scorer_team', team_id: stats.top_scorer_team },
         { onConflict: 'tournament_id, type' }
       );
   }
@@ -422,7 +342,7 @@ export async function batchCalculateMatchPoints(pollaId: string): Promise<BatchR
 
   const { data: matches } = await admin
     .from('matches')
-    .select('id, home_goals, away_goals')
+    .select('id, home_goals, away_goals, round')
     .eq('tournament_id', polla.tournament_id)
     .in('status', ['FT', 'AFT'])
     .eq('points_calculated', false);
@@ -453,31 +373,37 @@ export async function batchCalculateMatchPoints(pollaId: string): Promise<BatchR
 
     const realHome = match.home_goals;
     const realAway = match.away_goals;
-    const realDiff = realHome - realAway;
-    const realTotal = realHome + realAway;
-    const predHome = pred.home_goals;
-    const predAway = pred.away_goals;
-    const predDiff = predHome - predAway;
-    const predTotal = predHome + predAway;
-
-    let points = 0;
-    if (Math.sign(realDiff) === Math.sign(predDiff)) points += ps.correct_result;
-    if (realHome === predHome) points += ps.home_goals;
-    if (realAway === predAway) points += ps.away_goals;
-    if (realHome === predHome && realAway === predAway) points += ps.exact_score;
-    if (realDiff === predDiff) points += ps.goal_difference;
-    if (realTotal === predTotal) points += ps.total_goals;
-
-    let finalPoints = points;
-    if (points > 0 && pred.wildcard_used === 'x2') finalPoints = points * 2;
-    else if (points > 0 && pred.wildcard_used === 'x3') finalPoints = points * 3;
+    const points = scoreMatchPrediction({
+      realHome,
+      realAway,
+      predHome: pred.home_goals,
+      predAway: pred.away_goals,
+      ps,
+      wildcard: pred.wildcard_used as 'x2' | 'x3' | null,
+    });
 
     matchPointsToUpsert.push({
       polla_id: pollaId,
       user_id: pred.user_id,
       match_id: pred.match_id,
-      points: finalPoints,
+      points,
     });
+
+    // Badges & streaks
+    try {
+      const exact = realHome === pred.home_goals && realAway === pred.away_goals;
+      const correctResult = Math.sign(realHome - realAway) === Math.sign(pred.home_goals - pred.away_goals);
+      const m = matches.find((x) => x.id === pred.match_id);
+      const isFinal = m?.round ? (m.round.toLowerCase() === 'final' || m.round.toLowerCase() === 'grand final') : false;
+      await awardBadgesFromMatch(pollaId, pred.user_id, {
+        exact,
+        correctResult,
+        wildcardUsed: pred.wildcard_used,
+        isFinal,
+      });
+    } catch (badgeErr) {
+      console.error('Error awarding badges (batch):', badgeErr);
+    }
   }
 
   if (matchPointsToUpsert.length > 0) {
@@ -501,6 +427,7 @@ export async function batchCalculateMatchPoints(pollaId: string): Promise<BatchR
   for (const member of members || []) {
     await recalculateMemberTotalPoints(pollaId, member.user_id);
   }
+  await recordRankingHistory(pollaId, null);
 
   return { processed: matchPointsToUpsert.length, matches: matches.length };
 }
@@ -581,6 +508,7 @@ export async function calculateSpecialPoints(pollaId: string) {
     for (const member of members) {
       await recalculateMemberTotalPoints(pollaId, member.user_id);
     }
+    await recordRankingHistory(pollaId, null);
   }
 
   return { processed };

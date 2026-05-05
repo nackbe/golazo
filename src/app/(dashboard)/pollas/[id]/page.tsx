@@ -4,6 +4,9 @@ import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Settings, Hash, Trophy, CalendarDays, Sparkles } from 'lucide-react';
 import { CopyInviteLink } from '@/components/features/dashboard/copy-invite-link';
+import RankingEvolutionChart from '@/components/features/dashboard/ranking-evolution-chart';
+import { StreakIndicator } from '@/components/features/dashboard/streak-indicator';
+import { getRankingHistory } from '@/lib/sync/ranking-history';
 
 interface Props {
   params: { id: string };
@@ -67,6 +70,15 @@ export default async function PollaDetailPage({ params }: Props) {
   }
 
   const { data: members } = await membersQuery.order('total_points', { ascending: false });
+
+  const { data: streaks } = await admin
+    .from('player_streaks')
+    .select('user_id, current_result_streak, current_exact_streak, current_negative_streak')
+    .eq('polla_id', params.id);
+
+  const streakMap = new Map(streaks?.map((s) => [s.user_id, s]) ?? []);
+
+  const rankingHistory = await getRankingHistory(params.id);
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -171,9 +183,12 @@ export default async function PollaDetailPage({ params }: Props) {
                     <span className={`font-semibold truncate block text-sm ${isMe ? 'text-primary' : ''}`}>
                       {m.alias}
                     </span>
-                    {isMe && (
-                      <span className="text-[11px] text-primary/70 font-medium">Vos</span>
-                    )}
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      {isMe && (
+                        <span className="text-[11px] text-primary/70 font-medium">Vos</span>
+                      )}
+                      <StreakIndicator streak={streakMap.get(m.user_id)} />
+                    </div>
                   </div>
                   <div className="text-right flex-shrink-0">
                     <span className={`text-xl font-black ${i === 0 ? 'text-amber-500' : ''}`}>
@@ -195,6 +210,9 @@ export default async function PollaDetailPage({ params }: Props) {
           </div>
         )}
       </div>
+
+      {/* Evolución del ranking */}
+      <RankingEvolutionChart data={rankingHistory} currentUserId={user.id} />
 
     </div>
   );

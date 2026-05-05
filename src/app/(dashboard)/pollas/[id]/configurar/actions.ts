@@ -6,21 +6,11 @@ import { revalidatePath } from 'next/cache';
 import { batchCalculateMatchPoints } from '@/lib/sync/calculate-points';
 import { getMaxFixturesLoad } from '@/lib/settings';
 import { checkRateLimit, logApiUsage } from '@/lib/rate-limit';
+import { normalizeMatchStatus } from '@/lib/match-status';
 
 const LOCKED_STATUSES = ['active', 'finished'];
 
-const KNOWN_STATUSES = new Set([
-  'NS', 'TBD', 'PST', '1H', 'HT', '2H', 'ET', 'BT', 'P',
-  'SUSP', 'INT', 'FT', 'AET', 'PEN', 'AFT', 'CANC', 'ABD', 'AWD', 'WO', 'LIVE',
-]);
-
-function normalizeMatchStatus(apiStatus: string | undefined): string {
-  if (!apiStatus) return 'NS';
-  if (KNOWN_STATUSES.has(apiStatus)) return apiStatus;
-  return 'NS';
-}
-
-export async function updatePollaSettings(pollaId: string, formData: FormData) {
+export async function updateGeneralSettings(pollaId: string, formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: 'No autenticado.' };
@@ -46,45 +36,13 @@ export async function updatePollaSettings(pollaId: string, formData: FormData) {
   if (!['draft', 'open', 'active', 'finished'].includes(status)) return { error: 'Estado inválido.' };
   if (isNaN(bet_deadline_minutes) || bet_deadline_minutes < 0) return { error: 'Minutos de cierre inválidos.' };
 
-  // Protección: no permitir rebajar el status de una polla activa/finalizada
   if (isLocked && (status === 'draft' || status === 'open')) {
     status = polla.status;
   }
 
-  const updateData: Record<string, unknown> = { name, auto_approve, admin_plays, auto_random_prediction, status, bet_deadline_minutes };
-
-  if (!isLocked) {
-    const ps = {
-      correct_result: clamp(formData, 'ps_correct_result', 0, 100),
-      home_goals: clamp(formData, 'ps_home_goals', 0, 100),
-      away_goals: clamp(formData, 'ps_away_goals', 0, 100),
-      exact_score: clamp(formData, 'ps_exact_score', 0, 100),
-      goal_difference: clamp(formData, 'ps_goal_difference', 0, 100),
-      total_goals: clamp(formData, 'ps_total_goals', 0, 100),
-    };
-    updateData.point_system = ps;
-
-    const x2 = clamp(formData, 'wc_x2', 0, 100);
-    const x3 = clamp(formData, 'wc_x3', 0, 100);
-    updateData.wildcards = [
-      { type: 'x2', quantity: x2 },
-      { type: 'x3', quantity: x3 },
-    ];
-
-    const sps = {
-      champion: clamp(formData, 'ps_champion', 0, 100),
-      finalist: clamp(formData, 'ps_finalist', 0, 100),
-      third_place: clamp(formData, 'ps_third_place', 0, 100),
-      least_goals_against: clamp(formData, 'ps_least_goals_against', 0, 100),
-      worst_team: clamp(formData, 'ps_worst_team', 0, 100),
-      top_scorer_team: clamp(formData, 'ps_top_scorer_team', 0, 100),
-    };
-    updateData.special_point_system = sps;
-  }
-
   const { error } = await supabase
     .from('pollas')
-    .update(updateData)
+    .update({ name, auto_approve, admin_plays, auto_random_prediction, status, bet_deadline_minutes })
     .eq('id', pollaId);
 
   if (error) return { error: error.message };
@@ -92,6 +50,90 @@ export async function updatePollaSettings(pollaId: string, formData: FormData) {
   revalidatePath(`/pollas/${pollaId}`);
   revalidatePath(`/pollas/${pollaId}/configurar`);
   return { success: true };
+}
+
+export async function updatePointSystem(pollaId: string, formData: FormData) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: 'No autenticado.' };
+
+  const { data: polla } = await supabase
+    .from('pollas')
+    .select('admin_id, status')
+    .eq('id', pollaId)
+    .single();
+
+  if (!polla || polla.admin_id !== user.id) return { error: 'No tenés permisos.' };
+
+  if (LOCKED_STATUSES.includes(polla.status)) {
+    return { error: 'No se puede modificar el sistema de puntos una vez iniciada la polla.' };
+  }
+
+  const ps = {
+    correct_result: clamp(formData, 'ps_correct_result', 0, 100),
+    home_goals: clamp(formData, 'ps_home_goals', 0, 100),
+    away_goals: clamp(formData, 'ps_away_goals', 0, 100),
+    exact_score: clamp(formData, 'ps_exact_score', 0, 100),
+    goal_difference: clamp(formData, 'ps_goal_difference', 0, 100),
+    total_goals: clamp(formData, 'ps_total_goals', 0, 100),
+  };
+
+  const sps = {
+    champion: clamp(formData, 'ps_champion', 0, 100),
+    finalist: clamp(formData, 'ps_finalist', 0, 100),
+    third_place: clamp(formData, 'ps_third_place', 0, 100),
+    least_goals_against: clamp(formData, 'ps_least_goals_against', 0, 100),
+    worst_team: clamp(formData, 'ps_worst_team', 0, 100),
+    top_scorer_team: clamp(formData, 'ps_top_scorer_team', 0, 100),
+  };
+
+  const { error } = await supabase
+    .from('pollas')
+    .update({ point_system: ps, special_point_system: sps })
+    .eq('id', pollaId);
+
+  if (error) return { error: error.message };
+
+  revalidatePath(`/pollas/${pollaId}/configurar`);
+  return { success: true };
+}
+
+export async function updateWildcards(pollaId: string, formData: FormData) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: 'No autenticado.' };
+
+  const { data: polla } = await supabase
+    .from('pollas')
+    .select('admin_id, status')
+    .eq('id', pollaId)
+    .single();
+
+  if (!polla || polla.admin_id !== user.id) return { error: 'No tenés permisos.' };
+
+  if (LOCKED_STATUSES.includes(polla.status)) {
+    return { error: 'No se puede modificar los comodines una vez iniciada la polla.' };
+  }
+
+  const wildcards = [
+    { type: 'x2', quantity: clamp(formData, 'wc_x2', 0, 100) },
+    { type: 'x3', quantity: clamp(formData, 'wc_x3', 0, 100) },
+  ];
+
+  const { error } = await supabase
+    .from('pollas')
+    .update({ wildcards })
+    .eq('id', pollaId);
+
+  if (error) return { error: error.message };
+
+  revalidatePath(`/pollas/${pollaId}/configurar`);
+  return { success: true };
+}
+
+/** @deprecated Use block-specific actions instead */
+export async function updatePollaSettings(pollaId: string, formData: FormData) {
+  return updateGeneralSettings(pollaId, formData);
 }
 
 function clamp(fd: FormData, key: string, min: number, max: number): number {
