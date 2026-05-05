@@ -186,12 +186,12 @@ Las migraciones se aplican manualmente en el SQL Editor de Supabase. Todas las q
 | `0018_api_rate_limits.sql` | Tabla `api_usage_logs`. Funciones RPC `check_rate_limit()` y `log_api_usage()` SECURITY DEFINER para controlar abuso sin exponer la lógica al cliente. |
 | `0019_cron_optimizations.sql` | Columna `last_fixture_sync_at TIMESTAMPTZ` en `tournaments`. Índice parcial. Permite al cron evitar re-sincronizar torneos recién actualizados. |
 | `0020_system_settings.sql` | Tabla `system_settings (key TEXT PK, value JSONB)`. Columna `is_system_admin BOOLEAN` en `profiles`. Seed inicial con 10 parámetros del sistema. |
-| `0021_fix_polla_members_select_policy.sql` | **⚠️ PENDIENTE aplicar en Supabase.** Reemplaza policy SELECT de `polla_members` "Users can view own memberships" (solo veía fila propia) por "Members can view all members of their pollas" — usa `is_polla_member(polla_id)`. Sin esta migración los miembros no ven el ranking. Workaround activo: `/pollas/[id]/page.tsx` usa admin client para la query del leaderboard. |
-| `0022_add_email_to_profiles.sql` | **⚠️ PENDIENTE aplicar en Supabase.** Agrega columna `email TEXT` a `profiles`. Backfill desde `auth.users`. Actualiza trigger `handle_new_user` para guardar email al registrar usuario. |
-| `0023_expand_match_status.sql` | **⚠️ PENDIENTE aplicar en Supabase.** Expande el CHECK constraint de `matches.status` para incluir todos los status de API-Football: `PST`, `TBD`, `ABD`, `AWD`, `WO`, `SUSP`, `INT`, `AET`, `PEN`, `BT`, `LIVE` además de los 9 originales. Sin esta migración `loadFixtures` falla silenciosamente para torneos con partidos postergados (ej: Libertadores). |
-| `0024_admin_plays_column.sql` | **⚠️ PENDIENTE aplicar en Supabase.** `ALTER TABLE pollas ADD COLUMN admin_plays BOOLEAN DEFAULT TRUE NOT NULL`. Controla si el admin aparece en el ranking de su propia polla. Sin esta migración el toggle de configurar falla al guardar. |
-| `0026_badges_and_streaks.sql` | **⚠️ PENDIENTE aplicar en Supabase.** Tablas `player_streaks` y `player_badges`. RLS. Índices. Necesaria para que el sistema de rachas y badges funcione en producción. |
-| `0027_fix_streaks_permissions.sql` | **⚠️ PENDIENTE aplicar en Supabase.** `GRANT ALL ON player_streaks, player_badges TO service_role`. Sin esto el admin client no puede escribir en esas tablas. |
+| `0021_fix_polla_members_select_policy.sql` | ✅ Aplicada. Reemplaza policy SELECT de `polla_members` por "Members can view all members of their pollas" — usa `is_polla_member(polla_id)`. El workaround de admin client en `/pollas/[id]/page.tsx` ya puede quitarse. |
+| `0022_add_email_to_profiles.sql` | ✅ Aplicada. Agrega columna `email TEXT` a `profiles`. Backfill desde `auth.users`. Trigger `handle_new_user` guarda email al registrar. |
+| `0023_expand_match_status.sql` | ✅ Aplicada. CHECK constraint de `matches.status` incluye todos los status de API-Football (`PST`, `TBD`, `ABD`, `AWD`, `WO`, `SUSP`, `INT`, `AET`, `PEN`, `BT`, `LIVE`). |
+| `0024_admin_plays_column.sql` | ✅ Aplicada. `ALTER TABLE pollas ADD COLUMN admin_plays BOOLEAN DEFAULT TRUE NOT NULL`. Toggle "El admin juega en el ranking" funcional. |
+| `0026_badges_and_streaks.sql` | ✅ Aplicada. Tablas `player_streaks` y `player_badges` con RLS e índices en producción. |
+| `0027_fix_streaks_permissions.sql` | ✅ Aplicada. `GRANT ALL ON player_streaks, player_badges TO service_role`. |
 
 ### 4.3. Admin client para leer ranking (workaround RLS)
 
@@ -1972,33 +1972,116 @@ También se limpiaron los casts `(polla as any).admin_plays` reemplazándolos po
 
 ### 5. Plan de pruebas — Estado actual (2026-05-05)
 
+**Correr todos los tests:** `npx vitest run`
+**Correr smoke script:** `npx tsx scripts/e2e-smoke.ts`
+
 #### Frente A — Tests unitarios de funciones puras ✅ COMPLETADO
-- `src/lib/badges.test.ts` — `computeStreaks` y `determineBadges`: 20 tests, todos pasan.
-- `src/lib/sync/random-predictions.test.ts` — `filterUsersWithoutPrediction` y `buildRandomPredictions`: 9 tests.
+
+| Archivo | Qué cubre | Tests |
+|---|---|---|
+| `src/lib/badges.test.ts` | `computeStreaks`, `determineBadges` — todas las rachas y badges | 11 |
+| `src/lib/scoring.test.ts` | `scoreMatchPrediction` — todos los casos del sistema de puntos | 12 |
+| `src/lib/sync/random-predictions.test.ts` | `filterUsersWithoutPrediction`, `buildRandomPredictions` | 9 |
+| `src/lib/rate-limit.test.ts` | `getClientIdentifier` — extracción de IP desde headers | 6 |
 
 #### Frente B — Tests de integración contra Supabase real ✅ COMPLETADO
-- `src/lib/test/integration.test.ts` — 4 tests contra DB real:
-  - Cálculo exacto (8 puntos), total_points actualizado, ranking_history guardado, streaks correctos.
-  - Predicción incorrecta (1 punto por away_goals), negative_streak = 1.
-  - Batch calculation (múltiples partidos en una sola llamada).
-  - Cálculo de predicciones especiales.
-- `src/lib/test/factory.ts` — Helpers reutilizables: `createTestPolla`, `createTestMatches`, `createTestPredictions`, `cleanupAllTestData`.
 
-**Estado del suite completo: 76/76 tests pasan** (`npx vitest run`).
+**Archivo:** `src/lib/test/integration.test.ts`
+**Factory:** `src/lib/test/factory.ts` — helpers `createTestPolla`, `createTestMatches`, `createTestPredictions`, `cleanupAllTestData`
 
-#### Frente C — E2E smoke script (EN CURSO)
-Script `scripts/e2e-smoke.ts` que simula la vida completa de una polla sin Playwright/Cypress y sin tocar API-Football.
+| Describe | Escenario | Tests |
+|---|---|---|
+| Point calculation flow | Exacto = 8 pts, total_points, ranking_history, streaks; Incorrecto = 1 pt, negative_streak | 2 |
+| Wildcards y puntos custom | x2 exacto = 16 pts; x3 exacto = 24 pts; x2 en incorrecto = 4 pts; correcto no exacto = 2 pts | 4 |
+| Custom point system | Exacto con sistema custom = 13 pts; correcto sin exacto = 2 pts; x3 exacto = 39 pts | 3 |
+| Batch calculation | `batchCalculateMatchPoints` procesa múltiples partidos, total = 16 pts | 1 |
+| Special predictions | `calculateSpecialPoints` con campeón correcto = 10 pts | 1 |
 
-**Escenarios a cubrir:**
-1. Dos usuarios predicen un partido (A: 2-1 exacto, B: 0-0 incorrecto)
-2. Partido avanza a FT con resultado real 2-1
-3. `calculateMatchPoints` → verificar puntos A=8, B=1
-4. **Idempotencia**: correr `calculateMatchPoints` de nuevo → puntos no cambian
-5. **Comodín x2**: predicción con wildcard → verificar puntos × 2
-6. **Cron flow completo**: partido pasa de `1H` a `FT` sin pasar por live=all (simula partido "desaparecido"), verificar que el sync lo detecta y calcula
-7. Verificar: badge otorgado, ranking_history registrado, player_streaks actualizado
+**Estado: 84/84 tests pasan** (todas las suites juntas).
 
-**Herramienta:** `tsx scripts/e2e-smoke.ts` usando `createAdminClient()` directamente.
+**Bug crítico resuelto en Frente B:** `calculateAndUpdateStreaks` usaba `.in('matches.status', ...)` y `.order('matches.scheduled_at')` sobre columnas embebidas en supabase-js v2. Eso NO funciona — el filtro y orden se ignoraban silenciosamente. Fix: mover ambas operaciones a JS después del fetch. Además, supabase-js puede devolver `p.matches` como objeto o array según la dirección de FK — se maneja con `Array.isArray(p.matches) ? p.matches[0] : p.matches`.
+
+#### Frente C — E2E smoke script ✅ COMPLETADO
+
+**Archivo:** `scripts/e2e-smoke.ts`
+**Herramienta:** `npx tsx scripts/e2e-smoke.ts` usando `createAdminClient()` directamente (no Playwright, no API-Football).
+**Resultado:** 19/19 assertions pasan.
+
+| # | Escenario | Qué verifica |
+|---|---|---|
+| 1 | **Puntos básicos** | Exacto = 8 pts, incorrecto = 0 pts, `total_points`, `ranking_history`, `player_streaks` actualizados |
+| 2 | **Idempotencia** | Calcular puntos 3 veces seguidas → puntos no se duplican ni acumulan |
+| 3 | **Comodín x2** | Exacto con x2 = 16 pts (8 × 2) |
+| 4 | **Flujo cron** | Partido `1H → FT`, `points_calculated = true` |
+| 5 | **Comodín x3** | Exacto con x3 = 24 pts (8 × 3) |
+| 6 | **Comodín en predicción "incorrecta"** | Predice 0-2, real 2-0: `goal_diff` (abs) + `total_goals` coinciden → 2 pts × 2 = **4 pts** |
+| 7 | **Sistema de puntos custom** | `exact_score=10, correct_result=2, resto=0`: exacto = 12, correcto sin exacto = 2, incorrecto = 0, total = 14 |
+
+#### Cambio en `scoring.ts` — goal_difference es ahora absoluto
+
+**Decisión (2026-05-05):** La comparación de diferencia de goles usa `Math.abs()`.
+
+```typescript
+// ANTES — diferencia direccional (predecir 3-1 ≠ 1-3 aunque ambos tengan |diff|=2)
+if (realDiff === predDiff) { points += ps.goal_difference; }
+
+// AHORA — diferencia absoluta (predecir 3-1 o 1-3 da igual si el real fue 3-1)
+if (Math.abs(realDiff) === Math.abs(predDiff)) { points += ps.goal_difference; }
+```
+
+**Implicación:** Predecir 1-3 cuando el resultado fue 3-1 **sí** da el bonus de `goal_difference` (ambos tienen |diff|=2), aunque el resultado sea incorrecto (no da `correct_result`). El criterio es: ¿acertaste el margen de victoria, sin importar el sentido?
+
+---
+
+---
+
+## CAMBIOS SESIÓN 2026-05-05 — Tests, scoring, seed demo y UX fixture
+
+### 1. Sistema de tests completo (Frentes A + B + C)
+Ver sección §5 para detalle completo. Estado final: **84/84 vitest + 19/19 smoke**.
+
+### 2. goal_difference ahora es absoluto
+`Math.abs(realDiff) === Math.abs(predDiff)` — predecir 1-3 cuando el resultado fue 3-1 da el bonus de diferencia de goles (ambos tienen |diff|=2). Cambio en `src/lib/scoring.ts`.
+
+### 3. Script seed-demo.ts — datos visuales para probar la app
+**Archivo:** `scripts/seed-demo.ts`
+
+Crea una polla demo completa con datos realistas para inspeccionar badges, streaks, ranking y fixture en la UI:
+- 9 usuarios reales de la DB como miembros aprobados
+- 6 equipos (Argentina, Brasil, Colombia, Uruguay, México, Chile)
+- 15 partidos terminados en 5 fechas + Semifinal + Final
+- Patrones controlados: El Oráculo (6 exactos + x3), La Constante (10 correctos), El Maldito (5 malos + x2)
+- Usuarios 3-9: aleatorio reproducible con wildcards al azar
+- Calcula puntos partido a partido → ranking_history con historia real
+- Otorga badges al final
+
+```bash
+npx tsx scripts/seed-demo.ts          # crea la demo
+npx tsx scripts/seed-demo.ts --clean  # borra todo
+```
+IDs guardados en `.demo-seed-ids.json` (no commitear — ya en .gitignore).
+
+### 4. Puntos por partido visibles en fixture y detalle
+
+**`src/app/(dashboard)/pollas/[id]/fixture/page.tsx`**
+Ahora también carga `match_points` del usuario en paralelo con predictions. Los merges en el array de predictions como `{ ...pred, points }`.
+
+**`src/components/features/dashboard/fixture-list.tsx`**
+`interface Prediction` tiene `points?: number | null`. Los badges muestran:
+- `🎯 Exacto · +8pts`
+- `✓ Acertaste · +3pts`
+- `✗ Fallaste · 0pts`
+
+**`src/app/(dashboard)/pollas/[id]/prediccion/[matchId]/page.tsx`**
+- Carga `match_points` del usuario para el partido en paralelo con la predicción.
+- Banner de resultado muestra los puntos en grande: `+8 pts`, `+3 pts`, `0 pts`.
+
+### 5. Predicciones de otros: visibles desde que el partido inicia
+
+**Antes:** se mostraban cuando `!isOpen` (deadline de apuestas pasado).
+**Ahora:** se muestran cuando `matchStarted = !['NS','TBD','PST'].includes(match.status)`.
+
+Regla: nunca antes de que el partido arranque, pero desde el primer minuto en que está en vivo (o terminado).
 
 ---
 
@@ -2006,10 +2089,15 @@ Script `scripts/e2e-smoke.ts` que simula la vida completa de una polla sin Playw
 
 | Prioridad | Pendiente | Estado |
 |---|---|---|
-| 🔴 CRÍTICO | Aplicar migraciones 0021–0024, 0026–0027 en Supabase prod | ⏳ Pendiente manual |
-| 🔴 CRÍTICO | Configurar cron-job.org → POST /api/sync cada 5 min | ⏳ Pendiente |
-| 🟡 Alta | Frente C: script e2e-smoke.ts | 🔨 En curso |
-| 🟡 Alta | UI de badges y streaks en leaderboard/perfil | ⏳ Pendiente |
-| 🟢 Media | Gráfica de evolución del ranking (datos ya se guardan en ranking_history) | ⏳ Pendiente |
+| 🟡 Alta | **Automatizar los scripts de prueba** en CI (vitest + smoke corren solos en cada push) | ⏳ Pendiente |
 | 🟢 Media | Notificaciones push/email (requiere dominio propio para Resend) | ⏳ Pendiente |
-| ⚪ Baja | PWA service worker | ⏳ Pendiente |
+| ⚪ Baja | PWA service worker (instalable como app) | ⏳ Pendiente |
+| ⚪ Baja | UI para marcar resultados especiales manualmente en ligas sin partido "Final" | ⏳ Pendiente |
+
+### Migraciones — todas aplicadas en producción ✅
+0001 a 0024 + 0026 + 0027. No hay migraciones pendientes.
+
+### Estado del sistema de tests (2026-05-05)
+- **84/84 vitest tests pasan** — `npx vitest run`
+- **19/19 smoke assertions pasan** — `npx tsx scripts/e2e-smoke.ts`
+- Cubren: cálculo de puntos, wildcards x2/x3, sistemas custom, idempotencia, batch, predicciones especiales, rachas/badges, flujo cron

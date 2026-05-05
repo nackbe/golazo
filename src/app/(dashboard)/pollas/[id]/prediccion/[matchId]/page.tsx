@@ -63,14 +63,24 @@ export default async function PrediccionPage({ params }: Props) {
   deadline.setMinutes(deadline.getMinutes() - (polla.bet_deadline_minutes || 60));
   const isOpen = serverNow < deadline;
 
-  // Cargar predicción existente
-  const { data: prediction } = await supabase
-    .from('predictions')
-    .select('home_goals, away_goals, wildcard_used')
-    .eq('polla_id', params.id)
-    .eq('match_id', params.matchId)
-    .eq('user_id', user.id)
-    .maybeSingle();
+  // Cargar predicción existente + mis puntos en este partido
+  const [{ data: prediction }, { data: myMatchPoints }] = await Promise.all([
+    supabase
+      .from('predictions')
+      .select('home_goals, away_goals, wildcard_used')
+      .eq('polla_id', params.id)
+      .eq('match_id', params.matchId)
+      .eq('user_id', user.id)
+      .maybeSingle(),
+    supabase
+      .from('match_points')
+      .select('points')
+      .eq('polla_id', params.id)
+      .eq('match_id', params.matchId)
+      .eq('user_id', user.id)
+      .maybeSingle(),
+  ]);
+  const myPoints = myMatchPoints?.points ?? null;
 
   // Cargar comodines disponibles del jugador
   const { data: playerWildcards } = await supabase
@@ -96,9 +106,10 @@ export default async function PrediccionPage({ params }: Props) {
     x3: Math.max(0, totalX3 - usedX3ExcludingCurrent),
   };
 
-  // Cargar predicciones de todos cuando el partido ya no está abierto
+  // Predicciones de otros: visibles desde que el partido inicia (nunca antes)
+  const matchStarted = !['NS', 'TBD', 'PST'].includes(match.status);
   let allPredictions: any[] = [];
-  if (!isOpen) {
+  if (matchStarted) {
     const admin = createAdminClient();
     const { data: preds } = await admin
       .from('predictions')
@@ -200,21 +211,24 @@ export default async function PrediccionPage({ params }: Props) {
         const predResult = Math.sign(prediction.home_goals - prediction.away_goals);
         const correct = realResult === predResult;
         if (exact) return (
-          <div className="rounded-xl bg-emerald-500 text-white px-4 py-3 text-center">
+          <div className="rounded-xl bg-emerald-500 text-white px-4 py-3 text-center space-y-0.5">
             <p className="text-lg font-black">🎯 ¡Marcador exacto!</p>
             <p className="text-sm opacity-90">Predijiste {prediction.home_goals} - {prediction.away_goals}</p>
+            {myPoints != null && <p className="text-2xl font-black">+{myPoints} pts</p>}
           </div>
         );
         if (correct) return (
-          <div className="rounded-xl bg-emerald-100 text-emerald-800 px-4 py-3 text-center">
+          <div className="rounded-xl bg-emerald-100 text-emerald-800 px-4 py-3 text-center space-y-0.5">
             <p className="text-lg font-black">✓ Acertaste el resultado</p>
             <p className="text-sm opacity-75">Predijiste {prediction.home_goals} - {prediction.away_goals}</p>
+            {myPoints != null && <p className="text-xl font-black">+{myPoints} pts</p>}
           </div>
         );
         return (
-          <div className="rounded-xl bg-red-100 text-red-700 px-4 py-3 text-center">
+          <div className="rounded-xl bg-red-100 text-red-700 px-4 py-3 text-center space-y-0.5">
             <p className="text-lg font-black">✗ No acertaste</p>
             <p className="text-sm opacity-75">Predijiste {prediction.home_goals} - {prediction.away_goals}</p>
+            {myPoints != null && <p className="text-xl font-black">{myPoints} pts</p>}
           </div>
         );
       })()}
@@ -227,7 +241,7 @@ export default async function PrediccionPage({ params }: Props) {
         wildcardsAvailable={wildcardsAvailable}
       />
 
-      {!isOpen && allPredictions.length > 0 && (
+      {matchStarted && allPredictions.length > 0 && (
         <MatchPredictionsList
           predictions={allPredictions}
           homeTeamName={match.home_team?.name || 'Local'}

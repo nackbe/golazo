@@ -34,6 +34,7 @@ interface Prediction {
   home_goals: number;
   away_goals: number;
   wildcard_used: 'x2' | 'x3' | null;
+  points?: number | null;
 }
 
 interface Match {
@@ -356,18 +357,18 @@ export function FixtureList({ pollaId, matches, predictions, betDeadlineMinutes,
               </span>
             )}
             {predResult === 'exact' && (
-              <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-500 px-2 py-0.5 text-[10px] font-bold text-white">
-                🎯 Exacto
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500 px-2 py-0.5 text-[10px] font-bold text-white">
+                🎯 Exacto{pred?.points != null && <span className="opacity-90">· +{pred.points}pts</span>}
               </span>
             )}
             {predResult === 'correct' && (
-              <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
-                ✓ Acertaste
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                ✓ Acertaste{pred?.points != null && <span className="opacity-75">· +{pred.points}pts</span>}
               </span>
             )}
             {predResult === 'wrong' && (
-              <span className="inline-flex items-center gap-0.5 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-600">
-                ✗ Fallaste
+              <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-600">
+                ✗ Fallaste{pred?.points != null && <span className="opacity-75">· {pred.points}pts</span>}
               </span>
             )}
           </div>

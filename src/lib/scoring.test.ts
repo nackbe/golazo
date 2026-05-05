@@ -76,10 +76,21 @@ describe('scoreMatchPrediction', () => {
     expect(result).toBe(ps.home_goals);
   });
 
-  it('awards away_goals only', () => {
+  it('awards away_goals + goal_difference (abs) when only away score matches but diff magnitude equal', () => {
+    // real 2-1 (|diff|=1), pred 0-1 (|diff|=1): same abs diff, same away_goals, wrong result/home
     const result = scoreMatchPrediction({
       realHome: 2, realAway: 1,
       predHome: 0, predAway: 1,
+      ps,
+    });
+    expect(result).toBe(ps.away_goals + ps.goal_difference);
+  });
+
+  it('awards away_goals only when abs diff differs', () => {
+    // real 3-0 (|diff|=3), pred 0-0 (|diff|=0): away_goals match, no other category does
+    const result = scoreMatchPrediction({
+      realHome: 3, realAway: 0,
+      predHome: 0, predAway: 0,
       ps,
     });
     expect(result).toBe(ps.away_goals);

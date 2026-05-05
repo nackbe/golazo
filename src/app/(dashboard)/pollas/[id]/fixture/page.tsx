@@ -41,12 +41,25 @@ export default async function FixturePage({ params }: Props) {
     .eq('tournament_id', polla.tournament_id)
     .order('scheduled_at', { ascending: true });
 
-  // Cargar predicciones del usuario
-  const { data: predictions } = await supabase
-    .from('predictions')
-    .select('match_id, home_goals, away_goals, wildcard_used')
-    .eq('polla_id', params.id)
-    .eq('user_id', user.id);
+  // Cargar predicciones del usuario + puntos obtenidos
+  const [{ data: rawPredictions }, { data: matchPoints }] = await Promise.all([
+    supabase
+      .from('predictions')
+      .select('match_id, home_goals, away_goals, wildcard_used')
+      .eq('polla_id', params.id)
+      .eq('user_id', user.id),
+    supabase
+      .from('match_points')
+      .select('match_id, points')
+      .eq('polla_id', params.id)
+      .eq('user_id', user.id),
+  ]);
+
+  const pointsByMatch = new Map((matchPoints || []).map((mp) => [mp.match_id, mp.points]));
+  const predictions = (rawPredictions || []).map((p) => ({
+    ...p,
+    points: pointsByMatch.get(p.match_id) ?? null,
+  }));
 
   return (
     <div className="space-y-6">

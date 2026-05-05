@@ -298,6 +298,83 @@ async function runScenario4_CronFlow(userA: string) {
   assert(match.data?.points_calculated === true, 'points_calculated = true después del cron flow');
 }
 
+async function runScenario5_X3Wildcard(userA: string) {
+  section('Escenario 5 — Comodín x3 triplica puntos');
+
+  const tournamentId = await createSmokeTournament();
+  const pollaId = await createSmokePolla(tournamentId, userA);
+  await addMember(pollaId, userA, 'UserA_X3');
+
+  const matchId = await createSmokeMatch(tournamentId, { status: 'NS', scheduledAt: '2024-09-01T18:00:00Z' });
+  await addPrediction(pollaId, userA, matchId, 1, 0, 'x3'); // exacto con x3
+
+  await setMatchResult(matchId, 1, 0);
+  await calculateMatchPoints(matchId);
+
+  const points = await getMatchPoints(pollaId, userA, matchId);
+  // 1-0: correct_result(1)+home(1)+away(1)+exact(3)+diff(1)+total(1)=8 × 3 = 24
+  assert(points === 24, 'Exacto con x3 = 24 puntos (8 × 3)', `got ${points}`);
+}
+
+async function runScenario6_WildcardOnWrong(userA: string) {
+  section('Escenario 6 — Comodín en predicción incorrecta = 0 puntos');
+
+  const tournamentId = await createSmokeTournament();
+  const pollaId = await createSmokePolla(tournamentId, userA);
+  await addMember(pollaId, userA, 'UserA_WCWrong');
+
+  const matchId = await createSmokeMatch(tournamentId, { status: 'NS', scheduledAt: '2024-09-02T18:00:00Z' });
+  // Predice visitante gana (0-2), resultado real es local gana (2-0)
+  await addPrediction(pollaId, userA, matchId, 0, 2, 'x2');
+
+  await setMatchResult(matchId, 2, 0);
+  await calculateMatchPoints(matchId);
+
+  const points = await getMatchPoints(pollaId, userA, matchId);
+  // correct_result: no, home/away: no, but goal_diff abs (|−2|=|+2|=2) + total_goals (2=2) → 2pt × 2 = 4
+  assert(points === 4, 'Comodín x2: goal_diff(abs)+total_goals = 2pts × 2 = 4pts', `got ${points}`);
+}
+
+async function runScenario7_CustomPointSystem(userA: string) {
+  section('Escenario 7 — Sistema de puntos custom (exact_score=10, goal_difference=0)');
+
+  const tournamentId = await createSmokeTournament();
+  // Sistema custom: exact_score vale mucho, goles individuales no cuentan
+  const pollaId = await createSmokePolla(tournamentId, userA, {
+    point_system: { correct_result: 2, home_goals: 0, away_goals: 0, exact_score: 10, goal_difference: 0, total_goals: 0 },
+  });
+  await addMember(pollaId, userA, 'UserA_Custom');
+
+  const matchExact = await createSmokeMatch(tournamentId, { status: 'NS', scheduledAt: '2024-10-01T18:00:00Z' });
+  const matchCorrect = await createSmokeMatch(tournamentId, { status: 'NS', scheduledAt: '2024-10-02T18:00:00Z' });
+  const matchWrong = await createSmokeMatch(tournamentId, { status: 'NS', scheduledAt: '2024-10-03T18:00:00Z' });
+
+  // Exacto 2-1 → correct_result(2) + exact_score(10) = 12
+  await addPrediction(pollaId, userA, matchExact, 2, 1);
+  // Correcto pero no exacto: predice 1-0 (home win), real 3-0 (home win) → correct_result(2) = 2
+  await addPrediction(pollaId, userA, matchCorrect, 1, 0);
+  // Incorrecto: predice empate 0-0, real 1-0 → 0
+  await addPrediction(pollaId, userA, matchWrong, 0, 0);
+
+  await setMatchResult(matchExact, 2, 1);
+  await setMatchResult(matchCorrect, 3, 0);
+  await setMatchResult(matchWrong, 1, 0);
+
+  await calculateMatchPoints(matchExact);
+  await calculateMatchPoints(matchCorrect);
+  await calculateMatchPoints(matchWrong);
+
+  const pExact = await getMatchPoints(pollaId, userA, matchExact);
+  const pCorrect = await getMatchPoints(pollaId, userA, matchCorrect);
+  const pWrong = await getMatchPoints(pollaId, userA, matchWrong);
+  const total = await getMemberPoints(pollaId, userA);
+
+  assert(pExact === 12, 'Custom: exacto 2-1 = 12 pts (correct_result 2 + exact_score 10)', `got ${pExact}`);
+  assert(pCorrect === 2, 'Custom: correcto no exacto = 2 pts (solo correct_result)', `got ${pCorrect}`);
+  assert(pWrong === 0, 'Custom: incorrecto = 0 pts', `got ${pWrong}`);
+  assert(total === 14, 'Custom: total = 14 pts (12+2+0)', `got ${total}`);
+}
+
 // ─── main ────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -318,6 +395,9 @@ async function main() {
     await runScenario2_Idempotency(s1.pollaId, s1.matchId, userA);
     await runScenario3_Wildcard(userA);
     await runScenario4_CronFlow(userA);
+    await runScenario5_X3Wildcard(userA);
+    await runScenario6_WildcardOnWrong(userA);
+    await runScenario7_CustomPointSystem(userA);
   } catch (e: any) {
     console.error(`\n💥 Error inesperado: ${e.message}`);
     failed++;

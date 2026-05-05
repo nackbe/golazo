@@ -89,8 +89,8 @@ export function scoreMatchPrediction({
     points += ps.exact_score;
   }
 
-  // Diferencia de goles exacta
-  if (realDiff === predDiff) {
+  // Diferencia de goles (valor absoluto — da igual quién gana por más)
+  if (Math.abs(realDiff) === Math.abs(predDiff)) {
     points += ps.goal_difference;
   }
 
