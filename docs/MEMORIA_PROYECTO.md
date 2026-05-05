@@ -189,6 +189,9 @@ Las migraciones se aplican manualmente en el SQL Editor de Supabase. Todas las q
 | `0021_fix_polla_members_select_policy.sql` | **⚠️ PENDIENTE aplicar en Supabase.** Reemplaza policy SELECT de `polla_members` "Users can view own memberships" (solo veía fila propia) por "Members can view all members of their pollas" — usa `is_polla_member(polla_id)`. Sin esta migración los miembros no ven el ranking. Workaround activo: `/pollas/[id]/page.tsx` usa admin client para la query del leaderboard. |
 | `0022_add_email_to_profiles.sql` | **⚠️ PENDIENTE aplicar en Supabase.** Agrega columna `email TEXT` a `profiles`. Backfill desde `auth.users`. Actualiza trigger `handle_new_user` para guardar email al registrar usuario. |
 | `0023_expand_match_status.sql` | **⚠️ PENDIENTE aplicar en Supabase.** Expande el CHECK constraint de `matches.status` para incluir todos los status de API-Football: `PST`, `TBD`, `ABD`, `AWD`, `WO`, `SUSP`, `INT`, `AET`, `PEN`, `BT`, `LIVE` además de los 9 originales. Sin esta migración `loadFixtures` falla silenciosamente para torneos con partidos postergados (ej: Libertadores). |
+| `0024_admin_plays_column.sql` | **⚠️ PENDIENTE aplicar en Supabase.** `ALTER TABLE pollas ADD COLUMN admin_plays BOOLEAN DEFAULT TRUE NOT NULL`. Controla si el admin aparece en el ranking de su propia polla. Sin esta migración el toggle de configurar falla al guardar. |
+| `0026_badges_and_streaks.sql` | **⚠️ PENDIENTE aplicar en Supabase.** Tablas `player_streaks` y `player_badges`. RLS. Índices. Necesaria para que el sistema de rachas y badges funcione en producción. |
+| `0027_fix_streaks_permissions.sql` | **⚠️ PENDIENTE aplicar en Supabase.** `GRANT ALL ON player_streaks, player_badges TO service_role`. Sin esto el admin client no puede escribir en esas tablas. |
 
 ### 4.3. Admin client para leer ranking (workaround RLS)
 
@@ -1961,42 +1964,52 @@ También se limpiaron los casts `(polla as any).admin_plays` reemplazándolos po
 - Cálculo de rachas en `calculate-points.ts` (o función separada)
 - UI: panel de badges en perfil + tooltip en leaderboard
 
-**Estado:** ⏳ Pendiente diseño de badges y definición de reglas de cada uno.
+**Estado:** ✅ IMPLEMENTADO (sesión 2026-05-05). Tablas `player_streaks` y `player_badges`, función `calculateAndUpdateStreaks`, función `awardBadgesFromMatch`, definición de 17 badges en `src/lib/badges.ts`. La lógica es correcta y tiene tests unitarios. **Pendiente aplicar migraciones 0026 y 0027 en Supabase prod.**
+
+**Bug corregido (sesión 2026-05-05):** `calculateAndUpdateStreaks` usaba `.in('matches.status', ...)` y `.order('matches.scheduled_at')` sobre columnas de recursos embebidos en supabase-js. Eso NO funciona correctamente. Solución: filtrado y ordenamiento movidos a JS después de recibir los datos. También se agregó manejo defensivo por si `p.matches` viene como array en vez de objeto.
 
 ---
 
-### 5. Plan de pruebas
+### 5. Plan de pruebas — Estado actual (2026-05-05)
 
-**Objetivo:** Tener una suite mínima que garantice que el core no se rompe al hacer cambios.
+#### Frente A — Tests unitarios de funciones puras ✅ COMPLETADO
+- `src/lib/badges.test.ts` — `computeStreaks` y `determineBadges`: 20 tests, todos pasan.
+- `src/lib/sync/random-predictions.test.ts` — `filterUsersWithoutPrediction` y `buildRandomPredictions`: 9 tests.
 
-**Áreas críticas a testear:**
-1. **Auth** — login, onboarding, redirect, middleware
-2. **Pollas** — crear, unirse, iniciar, eliminar
-3. **Predicciones** — guardar, editar, validar deadline, comodines
-4. **Cálculo de puntos** — todos los escenarios de scoring (resultado, goles, exacto, diferencia, total)
-5. **Sync** — idempotencia, progresión de estados, cálculo post-partido
-6. **RLS** — usuario A no ve datos de usuario B
+#### Frente B — Tests de integración contra Supabase real ✅ COMPLETADO
+- `src/lib/test/integration.test.ts` — 4 tests contra DB real:
+  - Cálculo exacto (8 puntos), total_points actualizado, ranking_history guardado, streaks correctos.
+  - Predicción incorrecta (1 punto por away_goals), negative_streak = 1.
+  - Batch calculation (múltiples partidos en una sola llamada).
+  - Cálculo de predicciones especiales.
+- `src/lib/test/factory.ts` — Helpers reutilizables: `createTestPolla`, `createTestMatches`, `createTestPredictions`, `cleanupAllTestData`.
 
-**Herramientas propuestas:**
-- Vitest (ya viene con Next.js 14)
-- `@testing-library/react` para componentes
-- `msw` para mock de API-Football
-- Supabase local (cli) para tests de integración
+**Estado del suite completo: 76/76 tests pasan** (`npx vitest run`).
 
-**Estado:** ⏳ Pendiente. Carpeta `tests/` vacía. Se necesita sesión dedicada a setup de testing + primeros tests críticos.
+#### Frente C — E2E smoke script (EN CURSO)
+Script `scripts/e2e-smoke.ts` que simula la vida completa de una polla sin Playwright/Cypress y sin tocar API-Football.
 
----
+**Escenarios a cubrir:**
+1. Dos usuarios predicen un partido (A: 2-1 exacto, B: 0-0 incorrecto)
+2. Partido avanza a FT con resultado real 2-1
+3. `calculateMatchPoints` → verificar puntos A=8, B=1
+4. **Idempotencia**: correr `calculateMatchPoints` de nuevo → puntos no cambian
+5. **Comodín x2**: predicción con wildcard → verificar puntos × 2
+6. **Cron flow completo**: partido pasa de `1H` a `FT` sin pasar por live=all (simula partido "desaparecido"), verificar que el sync lo detecta y calcula
+7. Verificar: badge otorgado, ranking_history registrado, player_streaks actualizado
 
-## Resumen de pendientes por prioridad (opinión del desarrollador)
-
-| Prioridad | Pendiente | Esfuerzo estimado | Impacto usuario |
-|---|---|---|---|
-| Alta | Gráfica de evolución del ranking | 1-2 sesiones | ⭐⭐⭐ Muy deseable, genera tensión |
-| Alta | Plan de pruebas (core) | 2-3 sesiones | ⭐⭐ Evita regresiones |
-| Media | UX página Configurar | 1-2 sesiones | ⭐⭐ Mejora onboarding de admins |
-| Media | Modo racha y badges | 2 sesiones | ⭐⭐ Engagement social |
-| Baja | Scripts de cálculo automático | 1 sesión (definir) | ⭐ Reduce carga manual del admin |
-| Baja | PWA service worker | 0.5 sesiones | ⭐ Instalable, pero no crítico |
-| Baja | Notificaciones push/email | 2 sesiones | ⭐ Necesita dominio propio |
+**Herramienta:** `tsx scripts/e2e-smoke.ts` usando `createAdminClient()` directamente.
 
 ---
+
+## Resumen de pendientes por prioridad
+
+| Prioridad | Pendiente | Estado |
+|---|---|---|
+| 🔴 CRÍTICO | Aplicar migraciones 0021–0024, 0026–0027 en Supabase prod | ⏳ Pendiente manual |
+| 🔴 CRÍTICO | Configurar cron-job.org → POST /api/sync cada 5 min | ⏳ Pendiente |
+| 🟡 Alta | Frente C: script e2e-smoke.ts | 🔨 En curso |
+| 🟡 Alta | UI de badges y streaks en leaderboard/perfil | ⏳ Pendiente |
+| 🟢 Media | Gráfica de evolución del ranking (datos ya se guardan en ranking_history) | ⏳ Pendiente |
+| 🟢 Media | Notificaciones push/email (requiere dominio propio para Resend) | ⏳ Pendiente |
+| ⚪ Baja | PWA service worker | ⏳ Pendiente |
