@@ -193,6 +193,32 @@ export default async function PrediccionPage({ params }: Props) {
         )}
       </div>
 
+      {/* Resultado de la predicción */}
+      {!isOpen && prediction && match.home_goals !== null && match.away_goals !== null && (() => {
+        const exact = prediction.home_goals === match.home_goals && prediction.away_goals === match.away_goals;
+        const realResult = Math.sign(match.home_goals - match.away_goals);
+        const predResult = Math.sign(prediction.home_goals - prediction.away_goals);
+        const correct = realResult === predResult;
+        if (exact) return (
+          <div className="rounded-xl bg-emerald-500 text-white px-4 py-3 text-center">
+            <p className="text-lg font-black">🎯 ¡Marcador exacto!</p>
+            <p className="text-sm opacity-90">Predijiste {prediction.home_goals} - {prediction.away_goals}</p>
+          </div>
+        );
+        if (correct) return (
+          <div className="rounded-xl bg-emerald-100 text-emerald-800 px-4 py-3 text-center">
+            <p className="text-lg font-black">✓ Acertaste el resultado</p>
+            <p className="text-sm opacity-75">Predijiste {prediction.home_goals} - {prediction.away_goals}</p>
+          </div>
+        );
+        return (
+          <div className="rounded-xl bg-red-100 text-red-700 px-4 py-3 text-center">
+            <p className="text-lg font-black">✗ No acertaste</p>
+            <p className="text-sm opacity-75">Predijiste {prediction.home_goals} - {prediction.away_goals}</p>
+          </div>
+        );
+      })()}
+
       <PredictionForm
         pollaId={params.id}
         matchId={params.matchId}

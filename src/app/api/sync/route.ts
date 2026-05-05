@@ -45,12 +45,30 @@ function updateMatchFromFixture(
     .single() as any;
 }
 
-export async function POST(request: Request) {
+function isAuthorized(request: Request): boolean {
   const authHeader = request.headers.get('authorization');
   const expected = `Bearer ${process.env.CRON_SECRET}`;
-  if (!authHeader || authHeader !== expected) {
+  // Vercel Cron sends Authorization: Bearer <CRON_SECRET> automatically
+  return authHeader === expected;
+}
+
+// GET: llamado por Vercel Cron (vercel.json)
+export async function GET(request: Request) {
+  if (!isAuthorized(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+  return runSync();
+}
+
+// POST: llamado por cron-job.org u otros clientes externos
+export async function POST(request: Request) {
+  if (!isAuthorized(request)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  return runSync();
+}
+
+async function runSync() {
 
   const admin = createAdminClient();
   const now = new Date().toISOString();

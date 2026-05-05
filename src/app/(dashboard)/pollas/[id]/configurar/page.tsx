@@ -22,7 +22,7 @@ export default async function ConfigurarPollaPage({ params }: Props) {
 
   const { data: polla } = await supabase
     .from('pollas')
-    .select('id, name, status, auto_approve, bet_deadline_minutes, point_system, wildcards, special_point_system, admin_id, tournament_id, tournaments(id, name, season, country, type, logo_url, api_football_id)')
+    .select('id, name, status, auto_approve, admin_plays, bet_deadline_minutes, point_system, wildcards, special_point_system, admin_id, tournament_id, tournaments(id, name, season, country, type, logo_url, api_football_id)')
     .eq('id', params.id)
     .single();
 
@@ -55,6 +55,7 @@ export default async function ConfigurarPollaPage({ params }: Props) {
     name: polla.name,
     status: polla.status ?? 'draft',
     auto_approve: polla.auto_approve ?? false,
+    admin_plays: (polla as any).admin_plays ?? true,
     bet_deadline_minutes: polla.bet_deadline_minutes ?? 60,
     point_system: polla.point_system as Record<string, number> | null,
     wildcards: polla.wildcards as Array<{ type: string; quantity: number }> | null,

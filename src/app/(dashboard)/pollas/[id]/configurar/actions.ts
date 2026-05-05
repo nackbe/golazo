@@ -37,6 +37,7 @@ export async function updatePollaSettings(pollaId: string, formData: FormData) {
 
   const name = (formData.get('name') as string)?.trim();
   const auto_approve = formData.get('auto_approve') === 'true';
+  const admin_plays = formData.get('admin_plays') !== 'false';
   let status = formData.get('status') as string;
   const bet_deadline_minutes = parseInt(formData.get('bet_deadline_minutes') as string, 10);
 
@@ -49,7 +50,7 @@ export async function updatePollaSettings(pollaId: string, formData: FormData) {
     status = polla.status;
   }
 
-  const updateData: Record<string, unknown> = { name, auto_approve, status, bet_deadline_minutes };
+  const updateData: Record<string, unknown> = { name, auto_approve, admin_plays, status, bet_deadline_minutes };
 
   if (!isLocked) {
     const ps = {

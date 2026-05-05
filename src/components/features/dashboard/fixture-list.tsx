@@ -75,6 +75,19 @@ function formatTime(iso: string) {
   return d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
 }
 
+type PredictionResult = 'exact' | 'correct' | 'wrong';
+
+function getPredictionResult(match: Match, pred: Prediction | undefined): PredictionResult | null {
+  if (!pred) return null;
+  const isFinished = match.status === 'FT' || match.status === 'AFT' || match.status === 'AET' || match.status === 'PEN';
+  if (!isFinished || match.home_goals === null || match.away_goals === null) return null;
+  const exact = pred.home_goals === match.home_goals && pred.away_goals === match.away_goals;
+  if (exact) return 'exact';
+  const realResult = Math.sign(match.home_goals - match.away_goals);
+  const predResult = Math.sign(pred.home_goals - pred.away_goals);
+  return realResult === predResult ? 'correct' : 'wrong';
+}
+
 function isBetOpen(match: Match, deadlineMinutes: number) {
   const deadline = new Date(match.scheduled_at);
   deadline.setMinutes(deadline.getMinutes() - (deadlineMinutes || 60));
@@ -258,7 +271,8 @@ export function FixtureList({ pollaId, matches, predictions, betDeadlineMinutes,
   function renderMatchCard(match: Match) {
     const pred = predByMatch.get(match.id);
     const open = isBetOpen(match, betDeadlineMinutes);
-    const isFinished = match.status === 'FT' || match.status === 'AFT';
+    const isFinished = match.status === 'FT' || match.status === 'AFT' || match.status === 'AET' || match.status === 'PEN';
+    const predResult = getPredictionResult(match, pred);
     const isLive = ['1H', 'HT', '2H', 'ET', 'P'].includes(match.status || '');
     const isOverdue = !isFinished && !isLive && new Date(match.scheduled_at) < new Date();
     const hasPenalties = match.home_penalty_goals !== null && match.away_penalty_goals !== null;
@@ -320,8 +334,8 @@ export function FixtureList({ pollaId, matches, predictions, betDeadlineMinutes,
           {match.round && (
             <span className="text-[10px] text-muted-foreground text-center leading-tight max-w-[90px] break-words">{match.round}</span>
           )}
-          {/* Badge de predicción */}
-          <div className="mt-1">
+          {/* Badge de predicción + resultado */}
+          <div className="mt-1 flex flex-col items-center gap-1">
             {pred ? (
               <span className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold ${open ? 'bg-emerald-600 text-white' : 'border border-border bg-muted text-muted-foreground'}`}>
                 {open ? <Edit3 className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
@@ -339,6 +353,21 @@ export function FixtureList({ pollaId, matches, predictions, betDeadlineMinutes,
             ) : (
               <span className="rounded-md bg-muted px-2 py-1 text-[10px] text-muted-foreground">
                 Cerrado
+              </span>
+            )}
+            {predResult === 'exact' && (
+              <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-500 px-2 py-0.5 text-[10px] font-bold text-white">
+                🎯 Exacto
+              </span>
+            )}
+            {predResult === 'correct' && (
+              <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                ✓ Acertaste
+              </span>
+            )}
+            {predResult === 'wrong' && (
+              <span className="inline-flex items-center gap-0.5 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-600">
+                ✗ Fallaste
               </span>
             )}
           </div>

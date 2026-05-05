@@ -54,12 +54,19 @@ export default async function PollaDetailPage({ params }: Props) {
   // Usar admin client para que cualquier miembro aprobado pueda ver el ranking completo
   // (la RLS por defecto solo deja ver la fila propia)
   const admin = createAdminClient();
-  const { data: members } = await admin
+  let membersQuery = admin
     .from('polla_members')
     .select('alias, total_points, user_id, profiles(avatar_url)')
     .eq('polla_id', params.id)
-    .eq('status', 'approved')
-    .order('total_points', { ascending: false });
+    .eq('status', 'approved');
+
+  // Excluir al admin del ranking si admin_plays = false
+  const adminPlays = (polla as any).admin_plays ?? true;
+  if (!adminPlays) {
+    membersQuery = membersQuery.neq('user_id', polla.admin_id);
+  }
+
+  const { data: members } = await membersQuery.order('total_points', { ascending: false });
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">

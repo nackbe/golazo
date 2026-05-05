@@ -45,6 +45,7 @@ interface Polla {
   name: string;
   status: string;
   auto_approve: boolean;
+  admin_plays: boolean;
   bet_deadline_minutes: number;
   point_system: PointSystem | null;
   wildcards: WildcardEntry[] | null;
@@ -157,6 +158,7 @@ export function PollaSettingsForm({ polla }: { polla: Polla }) {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [autoApprove, setAutoApprove] = useState(polla.auto_approve);
+  const [adminPlays, setAdminPlays] = useState(polla.admin_plays);
 
   const isLocked = polla.status === 'active' || polla.status === 'finished';
 
@@ -166,6 +168,7 @@ export function PollaSettingsForm({ polla }: { polla: Polla }) {
     setSaved(false);
     const fd = new FormData(e.currentTarget);
     fd.set('auto_approve', autoApprove ? 'true' : 'false');
+    fd.set('admin_plays', adminPlays ? 'true' : 'false');
     startTransition(async () => {
       const result = await updatePollaSettings(polla.id, fd);
       if (result?.error) setError(result.error);
@@ -257,6 +260,18 @@ export function PollaSettingsForm({ polla }: { polla: Polla }) {
               {autoApprove
                 ? 'Cualquiera con el código entra directamente sin tu aprobación.'
                 : 'Vos aprobás manualmente cada solicitud en la sección de pendientes.'}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-start gap-4 rounded-xl border border-border p-4">
+          <Toggle value={adminPlays} onChange={setAdminPlays} disabled={isPending} />
+          <div>
+            <p className="text-sm font-semibold">El admin juega en el ranking</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {adminPlays
+                ? 'Tus predicciones cuentan y aparecés en el ranking junto a los demás jugadores.'
+                : 'No aparecés en el ranking ni se calculan tus puntos. Solo administrás la polla.'}
             </p>
           </div>
         </div>
