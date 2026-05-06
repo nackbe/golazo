@@ -75,14 +75,6 @@ async function runSync() {
     synced: 0,
     calculated: 0,
     errors: [] as string[],
-    debug: {
-      liveMatchesCount: 0,
-      overdueMatchesCount: 0,
-      tournamentIdsWithChanges: [] as string[],
-      affectedPollaIds: [] as string[],
-      pendingTournaments: [] as string[],
-      batchResults: [] as any[],
-    },
   };
 
   // ─────────────────────────────────────────
@@ -103,8 +95,7 @@ async function runSync() {
 
   const previousLiveMatches = previousLiveMatchesRes.data;
   const overdueMatches = overdueMatchesRes.data;
-  results.debug.liveMatchesCount = previousLiveMatches?.length ?? 0;
-  results.debug.overdueMatchesCount = overdueMatches?.length ?? 0;
+
 
   const toCalculate: string[] = [];
   const allTournamentIds = new Set<string>();
@@ -283,19 +274,15 @@ async function runSync() {
       .eq('tournament_id', tournamentId);
     for (const p of pollas || []) if (p.id) affectedPollaIds.add(p.id);
   }
-  results.debug.affectedPollaIds = Array.from(affectedPollaIds);
-  results.debug.pendingTournaments = Array.from(pendingTournamentIds);
 
   const batchPromises: Promise<void>[] = [];
   for (const pollaId of Array.from(affectedPollaIds)) {
     batchPromises.push(
       batchCalculateMatchPoints(pollaId).then((res) => {
-        results.debug.batchResults.push({ pollaId, ...res });
         if ('processed' in res && typeof res.processed === 'number') {
           results.calculated += res.processed;
         }
       }).catch((err: any) => {
-        results.debug.batchResults.push({ pollaId, error: err.message });
         results.errors.push(`Batch calculate ${pollaId}: ${err.message}`);
       })
     );
@@ -334,6 +321,5 @@ async function runSync() {
     calculated: results.calculated,
     special_calculated: specialCalculated,
     errors: results.errors.length > 0 ? results.errors : undefined,
-    debug: results.debug,
   });
 }
