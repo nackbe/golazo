@@ -58,6 +58,8 @@ interface Props {
   betDeadlineMinutes: number;
   isAdmin: boolean;
   pollaStatus?: string | null;
+  pollaName?: string;
+  pointSystem?: any;
 }
 
 type StatusFilter = 'all' | 'open' | 'closed' | 'missing' | 'predicted';
@@ -117,7 +119,7 @@ const STATUS_LABELS: Record<StatusFilter, string> = {
   predicted: 'Predicho',
 };
 
-export function FixtureList({ pollaId, matches, predictions, betDeadlineMinutes, isAdmin, pollaStatus }: Props) {
+export function FixtureList({ pollaId, matches, predictions, betDeadlineMinutes, isAdmin, pollaStatus, pollaName, pointSystem }: Props) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -129,6 +131,7 @@ export function FixtureList({ pollaId, matches, predictions, betDeadlineMinutes,
   const [statusFilter, setStatusFilter] = useState<StatusFilter>((searchParams.get('status') as StatusFilter) || 'all');
   const [sortBy, setSortBy] = useState<SortBy>((searchParams.get('sort') as SortBy) || 'date-asc');
   const [showFilters, setShowFilters] = useState(searchParams.get('showFilters') === '1');
+  const [showHelp, setShowHelp] = useState(false);
 
   // Sincronizar filtros con URL query params
   const updateUrl = useCallback((updates: Record<string, string | null>) => {
@@ -361,20 +364,20 @@ export function FixtureList({ pollaId, matches, predictions, betDeadlineMinutes,
                 Cerrado
               </span>
             )}
-            {predResult === 'exact' && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500 px-2 py-0.5 text-[10px] font-bold text-white">
-                🎯 Exacto{pred?.points != null && <span className="opacity-90">· +{pred.points}pts</span>}
-              </span>
-            )}
-            {predResult === 'correct' && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
-                ✓ Acertaste{pred?.points != null && <span className="opacity-75">· +{pred.points}pts</span>}
-              </span>
-            )}
-            {predResult === 'wrong' && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-600">
-                ✗ Fallaste{pred?.points != null && <span className="opacity-75">· {pred.points}pts</span>}
-              </span>
+            {isFinished && pred && (
+              pred.home_goals === match.home_goals && pred.away_goals === match.away_goals ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500 px-2 py-0.5 text-[10px] font-bold text-white">
+                  🎯 Exacto{pred.points != null && <span className="opacity-90">· +{pred.points}pts</span>}
+                </span>
+              ) : (pred.points ?? 0) > 0 ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                  ✓ Acertaste{pred.points != null && <span className="opacity-75">· +{pred.points}pts</span>}
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-600">
+                  ✗ Fallaste{pred.points != null && <span className="opacity-75">· {pred.points}pts</span>}
+                </span>
+              )
             )}
           </div>
         </div>
@@ -396,8 +399,48 @@ export function FixtureList({ pollaId, matches, predictions, betDeadlineMinutes,
     );
   }
 
+  const pointLabels: Record<string, string> = {
+    correct_result: 'Acierto de resultado',
+    home_goals: 'Gol del local',
+    away_goals: 'Gol del visitante',
+    exact_score: 'Marcador exacto',
+    goal_difference: 'Diferencia de goles',
+    total_goals: 'Total de goles',
+  };
+
   return (
     <div className="space-y-4">
+      {/* Nombre de polla + ayuda */}
+      {pollaName && (
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-bold">{pollaName}</h2>
+          {pointSystem && (
+            <div className="relative">
+              <button
+                onClick={() => setShowHelp(!showHelp)}
+                className="h-7 w-7 rounded-full bg-primary/10 text-primary text-xs font-bold hover:bg-primary/20 transition-colors"
+                title="Sistema de puntos"
+              >
+                ?
+              </button>
+              {showHelp && (
+                <div className="absolute right-0 top-9 z-50 w-64 rounded-xl border bg-card shadow-lg p-3 space-y-2">
+                  <p className="text-xs font-semibold text-muted-foreground">Sistema de puntos</p>
+                  <div className="space-y-1">
+                    {Object.entries(pointSystem as Record<string, number>).map(([key, value]) => (
+                      <div key={key} className="flex justify-between text-xs">
+                        <span>{pointLabels[key] ?? key}</span>
+                        <span className="font-bold">+{value} pts</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Resumen de contadores */}
       {hasMatches && (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">

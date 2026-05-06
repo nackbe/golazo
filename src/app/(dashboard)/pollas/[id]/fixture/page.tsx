@@ -86,6 +86,8 @@ export default async function FixturePage({ params }: Props) {
         betDeadlineMinutes={polla.bet_deadline_minutes || 60}
         isAdmin={isAdmin}
         pollaStatus={polla.status}
+        pollaName={polla.name}
+        pointSystem={polla.point_system}
       />
     </div>
   );

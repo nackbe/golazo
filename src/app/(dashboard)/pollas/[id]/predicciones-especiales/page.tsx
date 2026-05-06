@@ -101,7 +101,29 @@ export default async function SpecialPredictionsPage({ params }: Props) {
       </div>
 
       <div className="space-y-1">
-        <h1 className="text-2xl font-bold">Predicciones especiales</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold">Predicciones especiales</h1>
+          {polla.special_point_system && (
+            <details className="relative">
+              <summary className="list-none cursor-pointer">
+                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-bold hover:bg-primary/20 transition-colors">
+                  ?
+                </span>
+              </summary>
+              <div className="absolute right-0 top-9 z-50 w-64 rounded-xl border bg-card shadow-lg p-3 space-y-2">
+                <p className="text-xs font-semibold text-muted-foreground">Puntos por predicción especial</p>
+                <div className="space-y-1">
+                  {Object.entries(polla.special_point_system as Record<string, number>).map(([key, value]) => (
+                    <div key={key} className="flex justify-between text-xs">
+                      <span>{TYPE_CONFIG[key]?.label ?? key}</span>
+                      <span className="font-bold">+{value} pts</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </details>
+          )}
+        </div>
         <p className="text-sm text-muted-foreground">
           {polla.tournaments?.name || 'Torneo'} · Se hacen una sola vez antes del primer partido
         </p>

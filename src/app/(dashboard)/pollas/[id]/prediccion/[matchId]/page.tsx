@@ -230,9 +230,6 @@ export default async function PrediccionPage({ params }: Props) {
       {/* Resultado de la predicción */}
       {isFinished && prediction && match.home_goals !== null && match.away_goals !== null && (() => {
         const exact = prediction.home_goals === match.home_goals && prediction.away_goals === match.away_goals;
-        const realResult = Math.sign(match.home_goals - match.away_goals);
-        const predResult = Math.sign(prediction.home_goals - prediction.away_goals);
-        const correct = realResult === predResult;
         if (exact) return (
           <div className="rounded-xl bg-emerald-500 text-white px-4 py-3 text-center space-y-0.5">
             <p className="text-lg font-black">🎯 ¡Marcador exacto!</p>
@@ -240,9 +237,9 @@ export default async function PrediccionPage({ params }: Props) {
             {myPoints != null && <p className="text-2xl font-black">+{myPoints} pts</p>}
           </div>
         );
-        if (correct) return (
+        if ((myPoints ?? 0) > 0) return (
           <div className="rounded-xl bg-emerald-100 text-emerald-800 px-4 py-3 text-center space-y-0.5">
-            <p className="text-lg font-black">✓ Acertaste el resultado</p>
+            <p className="text-lg font-black">✓ Acertaste</p>
             <p className="text-sm opacity-75">Predijiste {prediction.home_goals} - {prediction.away_goals}</p>
             {myPoints != null && <p className="text-xl font-black">+{myPoints} pts</p>}
           </div>
