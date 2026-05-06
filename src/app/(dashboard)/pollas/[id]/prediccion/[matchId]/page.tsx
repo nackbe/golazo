@@ -7,12 +7,12 @@ import { MatchPredictionsList } from '@/components/features/dashboard/match-pred
 
 function formatMatchDate(iso: string) {
   const d = new Date(iso);
-  return d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+  return d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'America/Bogota' });
 }
 
 function formatMatchTime(iso: string) {
   const d = new Date(iso);
-  return d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Bogota' });
 }
 
 interface Props {

@@ -50,7 +50,7 @@ export async function getRankingHistory(pollaId: string): Promise<RankingEvoluti
     for (const m of matches ?? []) {
       const home = (m as any).teams?.name ?? '?';
       const away = (m as any).away_teams?.name ?? '?';
-      const date = new Date(m.scheduled_at).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' });
+      const date = new Date(m.scheduled_at).toLocaleDateString('es-AR', { day: 'numeric', month: 'short', timeZone: 'America/Bogota' });
       matchLabels[m.id] = `${home} vs ${away} (${date})`;
     }
   }

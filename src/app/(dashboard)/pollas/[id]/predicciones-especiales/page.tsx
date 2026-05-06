@@ -115,7 +115,7 @@ export default async function SpecialPredictionsPage({ params }: Props) {
             <p className="text-sm text-amber-700">
               Las predicciones especiales se cierran antes del primer partido.
               {firstMatchTime && (
-                <> El primer partido fue el {firstMatchTime.toLocaleDateString('es-ES')}.</>
+                <> El primer partido fue el {firstMatchTime.toLocaleDateString('es-ES', { timeZone: 'America/Bogota' })}.</>
               )}
             </p>
           </div>
@@ -158,7 +158,7 @@ export default async function SpecialPredictionsPage({ params }: Props) {
         <SpecialPredictionsForm
           pollaId={params.id}
           teams={teams}
-          firstMatchDate={firstMatchTime?.toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+          firstMatchDate={firstMatchTime?.toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'America/Bogota' })}
           points={points}
           existingPredictions={existingPredictions || []}
         />

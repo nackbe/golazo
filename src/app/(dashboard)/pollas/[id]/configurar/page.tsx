@@ -175,7 +175,7 @@ export default async function ConfigurarPollaPage({ params }: Props) {
                     <div className="flex items-center gap-2 flex-1 min-w-0">
                       <Calendar className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
                       <span className="text-muted-foreground text-xs w-16 flex-shrink-0">
-                        {new Date(match.scheduled_at).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })}
+                        {new Date(match.scheduled_at).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', timeZone: 'America/Bogota' })}
                       </span>
                       <span className="truncate">
                         {match.home_team?.name || '—'} vs {match.away_team?.name || '—'}
@@ -228,7 +228,7 @@ export default async function ConfigurarPollaPage({ params }: Props) {
                     <div className="flex items-center gap-2 flex-1 min-w-0">
                       <Calendar className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
                       <span className="text-muted-foreground text-xs w-16 flex-shrink-0">
-                        {new Date(match.scheduled_at).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })}
+                        {new Date(match.scheduled_at).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', timeZone: 'America/Bogota' })}
                       </span>
                       <span className="truncate">
                         {match.home_team?.name || '—'} vs {match.away_team?.name || '—'}

@@ -2226,6 +2226,17 @@ const rows = (data || [])
 
 **Fix aplicado:** Se eliminó `vercel.json` completamente. El cron se maneja externamente vía cron-job.org.
 
+### 5. Predicciones permitidas en pollas `draft` 🟡
+
+**Síntoma:** Los usuarios podían hacer predicciones en pollas que aún estaban en `draft`, antes de que el admin terminara de configurar el sistema de puntos.
+
+**Fix aplicado:**
+- **Backend:** `savePrediction` (server action) ahora rechaza con error si `polla.status === 'draft'`
+- **Frontend fixture-list:** Muestra badge "No iniciada" (ámbar) en vez de "Predecir" cuando la polla está en `draft`
+- **Frontend predicción detalle:** Muestra mensaje "La polla aún no ha iniciado" en vez del formulario de predicción
+
+**Razón de diseño:** El estado `draft` es el "modo configuración" del admin. Puede crear la polla, ajustar puntos, revisar fixtures, e incluso hacer predicciones de prueba (como admin). Solo cuando active la polla (cambia status a `active`), los usuarios pueden empezar a predecir. El cron SÍ calcula puntos para pollas `draft` (útil para verificar que todo funciona antes de lanzar).
+
 ---
 
 ## Resumen de pendientes por prioridad
@@ -2252,3 +2263,4 @@ const rows = (data || [])
 - **No filtrar pollas por status en el cron:** El endpoint `/api/sync` NO debe filtrar pollas por `status` al buscar cuáles necesitan cálculo de puntos. Toda polla de un torneo debe procesarse.
 - **Supabase joins:** Evitar `.in()` en campos de tablas join con `!inner`. Filtrar en JS después de traer los datos.
 - **CRON_SECRET:** El header es `Authorization: Bearer <CRON_SECRET>` (case-sensitive, `Bearer` con B mayúscula).
+- **Draft como modo configuración:** Una polla en `draft` permite al admin ver el fixture, ajustar el sistema de puntos, y revisar todo antes de activarla. Los usuarios NO pueden predecir hasta que el admin cambie el status a `active` (desde Configurar → Iniciar polla). El cron SÍ calcula puntos para pollas `draft` (útil si el admin hace predicciones de prueba).
