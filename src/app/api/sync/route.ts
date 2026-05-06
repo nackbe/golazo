@@ -260,8 +260,7 @@ async function runSync() {
     const { data: pollas } = await admin
       .from('pollas')
       .select('id')
-      .eq('tournament_id', tournamentId)
-      .in('status', ['active', 'finished', 'open']);
+      .eq('tournament_id', tournamentId);
     for (const p of pollas || []) if (p.id) affectedPollaIds.add(p.id);
   }
 
@@ -281,8 +280,7 @@ async function runSync() {
     const { data: pollas } = await admin
       .from('pollas')
       .select('id')
-      .eq('tournament_id', tournamentId)
-      .in('status', ['active', 'finished', 'open']);
+      .eq('tournament_id', tournamentId);
     for (const p of pollas || []) if (p.id) affectedPollaIds.add(p.id);
   }
   results.debug.affectedPollaIds = Array.from(affectedPollaIds);
