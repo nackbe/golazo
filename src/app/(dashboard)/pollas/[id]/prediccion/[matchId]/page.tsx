@@ -256,13 +256,20 @@ export default async function PrediccionPage({ params }: Props) {
         );
       })()}
 
-      <PredictionForm
-        pollaId={params.id}
-        matchId={params.matchId}
-        isOpen={isOpen}
-        existingPrediction={prediction}
-        wildcardsAvailable={wildcardsAvailable}
-      />
+      {polla.status === 'draft' ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-center space-y-1">
+          <p className="text-sm font-semibold text-amber-800">⏳ La polla aún no ha iniciado</p>
+          <p className="text-xs text-amber-700">El administrador debe activarla desde Configuración para que puedas hacer predicciones.</p>
+        </div>
+      ) : (
+        <PredictionForm
+          pollaId={params.id}
+          matchId={params.matchId}
+          isOpen={isOpen}
+          existingPrediction={prediction}
+          wildcardsAvailable={wildcardsAvailable}
+        />
+      )}
 
       {matchStarted && allPredictions.length > 0 && (
         <MatchPredictionsList

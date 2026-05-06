@@ -57,6 +57,7 @@ interface Props {
   predictions: Prediction[];
   betDeadlineMinutes: number;
   isAdmin: boolean;
+  pollaStatus?: string | null;
 }
 
 type StatusFilter = 'all' | 'open' | 'closed' | 'missing' | 'predicted';
@@ -116,7 +117,7 @@ const STATUS_LABELS: Record<StatusFilter, string> = {
   predicted: 'Predicho',
 };
 
-export function FixtureList({ pollaId, matches, predictions, betDeadlineMinutes, isAdmin }: Props) {
+export function FixtureList({ pollaId, matches, predictions, betDeadlineMinutes, isAdmin, pollaStatus }: Props) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -346,6 +347,10 @@ export function FixtureList({ pollaId, matches, predictions, betDeadlineMinutes,
                     {pred.wildcard_used.toUpperCase()}
                   </span>
                 )}
+              </span>
+            ) : pollaStatus === 'draft' ? (
+              <span className="inline-flex items-center rounded-lg bg-amber-100 text-amber-700 text-xs px-3 py-1 font-semibold">
+                No iniciada
               </span>
             ) : open ? (
               <span className="inline-flex items-center rounded-lg bg-[#0d3d1f] text-white text-xs px-3 py-1 font-semibold">

@@ -2109,97 +2109,22 @@ Regla: nunca antes de que el partido arranque, pero desde el primer minuto en qu
 
 ---
 
-## Puesta en producción — Checklist
+## Puesta en producción — Estado completo (2026-04-25)
 
-### Estado actual (2026-04-25)
+### ✅ Todo listo para producción
+
 | Ítem | Estado | Notas |
 |---|---|---|
 | Motor de puntos + ranking + badges | ✅ Listo | `/api/sync` hace todo |
 | Tests unitarios + integración | ✅ 76/76 pasan | Vitest + Supabase real |
 | Migraciones DB | ✅ 0001–0027 aplicadas | Incluye grants de service_role |
-| Bug streaks `.in()` en join | ✅ Arreglado | Filtrado movido a JS |
 | GitHub ↔ Vercel | ✅ Conectado | Deploy automático en push a main |
-| **Cron externo (cron-job.org)** | ⏳ **ÚNICO PENDIENTE** | 2 jobs: live + fixtures |
+| Cron externo (cron-job.org) | ✅ **Configurado y funcionando** | 2 jobs: live cada 2 min + fixtures cada 6 h |
 | Variables de entorno en Vercel | ✅ Configuradas | CRON_SECRET incluido |
-| Endpoint refactorizado | ✅ `/api/sync` + `/api/sync/fixtures` | Separado para <10 seg en Hobby |
-| Runtime | ✅ **Edge Runtime** | 30 seg timeout en Hobby (vs 10 seg serverless) |
-| Cálculo de puntos | ✅ **Batch por polla** | `batchCalculateMatchPoints` en vez de uno por uno |
 | `vercel.json` | ❌ Eliminado | No compatible con Hobby; usar cron-job.org |
 
-### Por qué cron-job.org y no Vercel Cron nativo
-Vercel **Hobby** solo permite crons con frecuencia **diaria**. `vercel.json` dice `*/2 * * * *`, pero Vercel Hobby lo ignora. La solución gratis y confiable es **cron-job.org**.
+### Arquitectura de sync actual
 
-### Instrucciones para configurar cron-job.org
-
-Necesitás **2 cronjobs** porque dividimos el endpoint para que quepa en el límite de 10 segundos de Vercel Hobby.
-
-#### Job 1 — Live + Points (cada 2 minutos)
-
-| Campo | Valor |
-|-------|-------|
-| **Title** | `Golazo Live Sync` |
-| **URL** | `https://golazo-puce.vercel.app/api/sync` |
-| **Request Method** | `POST` |
-| **Headers** | `Authorization: Bearer <CRON_SECRET>` |
-| **Schedule** | `Every 2 minutes` |
-| **Timeout** | `30` segundos |
-
-Qué hace: live scores, detecta partidos terminados, calcula puntos, badges, predicciones especiales.
-
-#### Job 2 — Fixture Sync (cada 6 horas)
-
-| Campo | Valor |
-|-------|-------|
-| **Title** | `Golazo Fixture Sync` |
-| **URL** | `https://golazo-puce.vercel.app/api/sync/fixtures` |
-| **Request Method** | `POST` |
-| **Headers** | `Authorization: Bearer <CRON_SECRET>` |
-| **Schedule** | `Every 6 hours` (o `Custom`: `0 */6 * * *`) |
-| **Timeout** | `30` segundos (máximo gratis) |
-
-Qué hace: sincroniza fixtures nuevos de torneos activos. Puede tardar >10 segundos si hay muchos torneos; en ese caso Vercel Hobby lo mata y se reintenta en 6 horas. No crítico para la experiencia de usuario.
-
-#### Verificación
-1. Guardar ambos jobs
-2. Dale **"Test run"** al job 1 — debe devolver `200` con `{"ok":true,"synced":N,"calculated":N}`
-3. Dale **"Test run"** al job 2 — debe devolver `200` con `{"ok":true,"fixture_syncs":N,"tournaments_checked":N}`
-
-### Fallback / redundancia
-Si en el futuro upgradeas a **Vercel Pro** ($20/mes), el `vercel.json` ya está listo y el cron nativo se activa automáticamente. Puedes dejar ambos corriendo — la lógica es idempotente, no duplica puntos.
-
-### Latencias esperadas en producción
-| Evento | Latencia máxima |
-|---|---|
-| Gol en vivo | ~2 min (próxima ejecución del cron) |
-| Partido termina → puntos calculados | ~2 min |
-| Nuevo fixture aparece en la polla | ~6 h (sync automático configurable) |
-| Partido atrasado/postergado | ~2 min (el cron lo detecta) |
-
----
-
-## Resumen de pendientes por prioridad
-
-| Prioridad | Pendiente | Estado |
-|---|---|---|
-| 🔴 **Crítico** | **Configurar 2 cronjobs en cron-job.org** (live cada 2 min + fixtures cada 6 h) | ⏳ Ver instrucciones arriba |
-| 🟡 Alta | Automatizar tests en CI (descomentar paso en `.github/workflows/ci.yml`) | ⏳ Pendiente |
-| 🟢 Media | Notificaciones push/email (requiere dominio propio para Resend) | ⏳ Pendiente |
-| ⚪ Baja | PWA service worker (instalable como app) | ⏳ Pendiente |
-| ⚪ Baja | UI para marcar resultados especiales manualmente en ligas sin partido "Final" | ⏳ Pendiente |
-
-### Migraciones — todas aplicadas en producción ✅
-0001 a 0027. No hay migraciones pendientes.
-
-### Estado del sistema de tests (2026-04-25)
-- **76/76 vitest tests pasan** — `npx vitest run`
-  - 72 unit tests (scoring, match-status, utils, rate-limit, badges, random-predictions)
-  - 4 integration tests (exact score, wrong prediction, batch, special predictions)
-- Cubren: cálculo de puntos, wildcards x2/x3, sistemas custom, idempotencia, batch, predicciones especiales, rachas/badges
-
-### Fixes recientes (2026-04-25)
-- **Live match UX**: En la página de predicción (`prediccion/[matchId]/page.tsx`), el resultado de la predicción y el badge de ganador solo se muestran cuando `match.status === 'FT' || 'AFT'`. Antes usaba `!isOpen` (plazo cerrado), lo cual causaba que durante un partido en vivo se mostrara "Acertaste" o "Ganó X" con el marcador parcial. Ahora muestra un indicador "● En vivo" en naranja pulsante mientras el partido está en curso.
-
-### Arquitectura de sync (post-refactorización)
 ```
 cron-job.org (2 min)  →  POST /api/sync        [Edge Runtime, 30s timeout]
   ├─ live scores (API-Football)
@@ -2215,3 +2140,115 @@ cron-job.org (6 h)    →  POST /api/sync/fixtures  [Edge Runtime, 30s timeout]
 **Por qué Edge Runtime:** en Vercel Hobby, las serverless functions se matan a los 10 segundos. Edge Functions duran **30 segundos**, lo cual da margen suficiente para el batch de cálculo de puntos.
 
 **Por qué batch:** antes se llamaba `calculateMatchPoints` una vez por partido (N rondas de queries). Ahora se usa `batchCalculateMatchPoints(pollaId)` que procesa **todos los partidos pendientes de una polla en una sola pasada** (1 ronda de queries por polla).
+
+### Configuración cron-job.org (ya aplicada)
+
+#### Job 1 — Live + Points (cada 2 minutos)
+| Campo | Valor |
+|-------|-------|
+| **Title** | `Golazo Live Sync` |
+| **URL** | `https://golazo-puce.vercel.app/api/sync` |
+| **Request Method** | `POST` |
+| **Headers** | `Authorization: Bearer <CRON_SECRET>` |
+| **Schedule** | `Every 2 minutes` |
+| **Timeout** | `30` segundos |
+
+#### Job 2 — Fixture Sync (cada 6 horas)
+| Campo | Valor |
+|-------|-------|
+| **Title** | `Golazo Fixture Sync` |
+| **URL** | `https://golazo-puce.vercel.app/api/sync/fixtures` |
+| **Request Method** | `POST` |
+| **Headers** | `Authorization: Bearer <CRON_SECRET>` |
+| **Schedule** | `Every 6 hours` (o `Custom`: `0 */6 * * *`) |
+| **Timeout** | `30` segundos (máximo gratis) |
+
+### Latencias esperadas en producción
+| Evento | Latencia máxima |
+|---|---|
+| Gol en vivo | ~2 min (próxima ejecución del cron) |
+| Partido termina → puntos calculados | ~2 min |
+| Nuevo fixture aparece en la polla | ~6 h (sync automático configurable) |
+| Partido atrasado/postergado | ~2 min (el cron lo detecta) |
+
+---
+
+## Bugs críticos resueltos en esta sesión
+
+### 1. Cálculo de puntos NO funcionaba en producción 🔴
+
+**Síntoma:** Los usuarios acertaban predicciones pero no veían puntos en fixture, predicción detallada, ni ranking.
+
+**Causa raíz:** Durante la refactorización a `batchCalculateMatchPoints`, el endpoint `/api/sync` filtraba pollas por `status IN ['active', 'finished']` al buscar qué pollas necesitaban cálculo de puntos. Las pollas reales del usuario estaban en estado `'draft'`, así que quedaban excluidas. Se acumularon **1000+ partidos `FT` sin calcular puntos**.
+
+**Fix aplicado:** Se eliminó completamente el filtro de `status` en la query que busca pollas para calcular puntos (`src/app/api/sync/route.ts`). Ahora se buscan TODAS las pollas de un torneo sin importar su estado (`draft`, `open`, `active`, `finished`). `batchCalculateMatchPoints` ya maneja gracefulmente el caso de no tener members approved o predicciones — simplemente marca los matches como calculados y sigue.
+
+**Lección:** Nunca filtrar por estado de polla en el cron de cálculo de puntos. Si una polla existe para un torneo, debe procesarse.
+
+### 2. Partidos en vivo mostraban resultado como si estuvieran terminados 🔴
+
+**Síntoma:** Durante un partido en vivo, la página de predicción mostraba "Acertaste el resultado", "Ganó X equipo", y los puntos, usando el marcador parcial.
+
+**Causa raíz:** En `src/app/(dashboard)/pollas/[id]/prediccion/[matchId]/page.tsx`, la condición para mostrar el resultado de la predicción usaba `!isOpen` (plazo de apuestas cerrado). Cuando un partido empieza, el plazo cierra (`!isOpen = true`), pero el partido todavía no terminó. Entonces comparaba la predicción con el marcador en vivo y mostraba "Acertaste" o "No acertaste".
+
+**Fix aplicado:**
+- Se agregó `const isFinished = match.status === 'FT' || match.status === 'AFT'`
+- El ganador del partido y el resultado de la predicción solo se muestran cuando `isFinished`
+- Se agregó un indicador **"● En vivo"** en naranja pulsante cuando el partido está en curso
+- El marcador en vivo sigue siendo visible (es útil para el usuario)
+
+**Nota:** `fixture-list.tsx` ya manejaba esto correctamente (`getPredictionResult` devolvía `null` si `!isFinished`). El bug solo afectaba la página de detalle de predicción.
+
+### 3. Streaks/badges fallaban silenciosamente en tests y producción 🟡
+
+**Síntoma:** Los tests de integración fallaban porque `player_streaks` se creaba con todo en 0. En producción, badges nunca se otorgaban.
+
+**Causa raíz:** En `src/lib/badges.ts`, `calculateAndUpdateStreaks` usaba `.in('matches.status', ['FT', 'AFT'])` con un join `matches!inner`. En Supabase JS v2, `.in()` en campos de tabla join con `!inner` falla silenciosamente: `data` viene como `[]` (vacío), sin error. `computeStreaks([])` devuelve todo 0, y se hace upsert con todo 0.
+
+**Fix aplicado:** Se movió el filtro de status de la query de Supabase al filtrado en JavaScript:
+```typescript
+// Antes (fallaba):
+const { data } = await admin.from('predictions')
+  .select('..., matches!inner(...)')
+  .in('matches.status', ['FT', 'AFT']);
+
+// Ahora (funciona):
+const { data } = await admin.from('predictions')
+  .select('..., matches!inner(...)');
+const rows = (data || [])
+  .filter(p => p.matches?.status === 'FT' || p.matches?.status === 'AFT')
+  ...
+```
+
+### 4. Vercel Hobby bloqueaba deploy por cron en `vercel.json` 🟡
+
+**Causa:** `vercel.json` tenía `"crons": [{"schedule": "*/2 * * * *"}]`. Vercel Hobby rechaza deploys con crons más frecuentes que diarios.
+
+**Fix aplicado:** Se eliminó `vercel.json` completamente. El cron se maneja externamente vía cron-job.org.
+
+---
+
+## Resumen de pendientes por prioridad
+
+| Prioridad | Pendiente | Estado |
+|---|---|---|
+| 🟡 Alta | Automatizar tests en CI (descomentar paso en `.github/workflows/ci.yml`) | ⏳ Pendiente |
+| 🟢 Media | Notificaciones push/email (requiere dominio propio para Resend) | ⏳ Pendiente |
+| ⚪ Baja | PWA service worker (instalable como app) | ⏳ Pendiente |
+| ⚪ Baja | UI para marcar resultados especiales manualmente en ligas sin partido "Final" | ⏳ Pendiente |
+
+### Migraciones — todas aplicadas en producción ✅
+0001 a 0027. No hay migraciones pendientes.
+
+### Estado del sistema de tests (2026-04-25)
+- **76/76 vitest tests pasan** — `npx vitest run`
+  - 72 unit tests (scoring, match-status, utils, rate-limit, badges, random-predictions)
+  - 4 integration tests (exact score, wrong prediction, batch, special predictions)
+- Cubren: cálculo de puntos, wildcards x2/x3, sistemas custom, idempotencia, batch, predicciones especiales, rachas/badges
+
+### Notas para futuras sesiones
+- **Edge Runtime:** Ambos endpoints de sync (`/api/sync` y `/api/sync/fixtures`) usan `export const runtime = 'edge'` y `export const maxDuration = 30`. No volver a serverless sin una razón muy fuerte.
+- **Batch calculation:** Siempre usar `batchCalculateMatchPoints(pollaId)` en vez de `calculateMatchPoints(matchId)` en el cron. Es mucho más eficiente.
+- **No filtrar pollas por status en el cron:** El endpoint `/api/sync` NO debe filtrar pollas por `status` al buscar cuáles necesitan cálculo de puntos. Toda polla de un torneo debe procesarse.
+- **Supabase joins:** Evitar `.in()` en campos de tablas join con `!inner`. Filtrar en JS después de traer los datos.
+- **CRON_SECRET:** El header es `Authorization: Bearer <CRON_SECRET>` (case-sensitive, `Bearer` con B mayúscula).

@@ -41,11 +41,14 @@ export async function savePrediction(formData: FormData) {
 
   const { data: polla } = await supabase
     .from('pollas')
-    .select('id, bet_deadline_minutes, tournament_id')
+    .select('id, bet_deadline_minutes, tournament_id, status')
     .eq('id', pollaId)
     .single();
 
   if (!polla) return { error: 'Polla no encontrada.' };
+  if (polla.status === 'draft') {
+    return { error: 'La polla aún no ha iniciado. El administrador debe activarla desde Configuración.' };
+  }
   if (matchPolla.tournament_id !== polla.tournament_id) {
     return { error: 'El partido no pertenece a esta polla.' };
   }
