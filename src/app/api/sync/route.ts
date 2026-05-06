@@ -261,7 +261,7 @@ async function runSync() {
       .from('pollas')
       .select('id')
       .eq('tournament_id', tournamentId)
-      .in('status', ['active', 'finished']);
+      .in('status', ['active', 'finished', 'open']);
     for (const p of pollas || []) if (p.id) affectedPollaIds.add(p.id);
   }
 
@@ -282,7 +282,7 @@ async function runSync() {
       .from('pollas')
       .select('id')
       .eq('tournament_id', tournamentId)
-      .in('status', ['active', 'finished']);
+      .in('status', ['active', 'finished', 'open']);
     for (const p of pollas || []) if (p.id) affectedPollaIds.add(p.id);
   }
   results.debug.affectedPollaIds = Array.from(affectedPollaIds);
