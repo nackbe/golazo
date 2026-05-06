@@ -2196,6 +2196,9 @@ Si en el futuro upgradeas a **Vercel Pro** ($20/mes), el `vercel.json` ya está 
   - 4 integration tests (exact score, wrong prediction, batch, special predictions)
 - Cubren: cálculo de puntos, wildcards x2/x3, sistemas custom, idempotencia, batch, predicciones especiales, rachas/badges
 
+### Fixes recientes (2026-04-25)
+- **Live match UX**: En la página de predicción (`prediccion/[matchId]/page.tsx`), el resultado de la predicción y el badge de ganador solo se muestran cuando `match.status === 'FT' || 'AFT'`. Antes usaba `!isOpen` (plazo cerrado), lo cual causaba que durante un partido en vivo se mostrara "Acertaste" o "Ganó X" con el marcador parcial. Ahora muestra un indicador "● En vivo" en naranja pulsante mientras el partido está en curso.
+
 ### Arquitectura de sync (post-refactorización)
 ```
 cron-job.org (2 min)  →  POST /api/sync        [Edge Runtime, 30s timeout]
