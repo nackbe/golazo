@@ -544,8 +544,11 @@ export async function batchCalculateMatchPoints(pollaId: string): Promise<BatchR
   // Recalcular totales de TODOS los miembros en batch (una sola query RPC)
   await recalculateAllMemberTotals(pollaId);
 
-  // Registrar ranking history (idempotente gracias a UNIQUE constraint)
-  await recordRankingHistory(pollaId, null);
+  // Registrar ranking history para CADA partido procesado
+  // Esto permite que la gráfica de evolución muestre el avance partido a partido
+  for (const match of matches) {
+    await recordRankingHistory(pollaId, match.id);
+  }
 
   return { processed: matchPointsToUpsert.length, matches: matches.length };
 }
