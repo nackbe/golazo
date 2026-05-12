@@ -316,7 +316,7 @@ export function PollaSettingsForm({ polla }: { polla: Polla }) {
               <div key={f.key} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold">{f.label}</p>
-                  <p className="text-xs text-muted-foreground sm:truncate">{f.description}</p>
+                  <p className="text-xs text-muted-foreground">{f.description}</p>
                 </div>
                 <NumberInput name={`ps_${f.key}`} defaultValue={ps(f.key, f.defaultVal)} min={0} max={100} disabled={points.isPending || isLocked} />
               </div>
@@ -331,7 +331,7 @@ export function PollaSettingsForm({ polla }: { polla: Polla }) {
               <div key={f.key} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold">{f.label}</p>
-                  <p className="text-xs text-muted-foreground sm:truncate">{f.description}</p>
+                  <p className="text-xs text-muted-foreground">{f.description}</p>
                 </div>
                 <NumberInput name={`ps_${f.key}`} defaultValue={sps(f.key, f.defaultVal)} min={0} max={100} disabled={points.isPending || isLocked} />
               </div>

@@ -29,7 +29,8 @@ export function DeletePollaSection({ pollaId, pollaName }: Props) {
         alert(result.error);
       } else {
         setShowModal(false);
-        router.push('/pollas');
+        // Hard navigation to force re-fetch of server components
+        window.location.href = '/pollas';
       }
     });
   }
