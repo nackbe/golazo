@@ -2265,3 +2265,340 @@ const rows = (data || [])
 - **CRON_SECRET:** El header es `Authorization: Bearer <CRON_SECRET>` (case-sensitive, `Bearer` con B mayúscula).
 - **Draft como modo configuración:** Una polla en `draft` permite al admin ver el fixture, ajustar el sistema de puntos, y revisar todo antes de activarla. Los usuarios NO pueden predecir hasta que el admin cambie el status a `active` (desde Configurar → Iniciar polla). El cron SÍ calcula puntos para pollas `draft` (útil si el admin hace predicciones de prueba).
 - **Zona horaria en fechas:** Todos los Server Components y módulos de `lib/` que formatean fechas deben especificar `timeZone: 'America/Bogota'` en `toLocaleDateString`/`toLocaleTimeString`/`Intl.DateTimeFormat`. Los Client Components usan la zona horaria del navegador del usuario. Si no se fuerza la zona horaria en Server Components, Vercel (UTC) muestra horas distintas al fixture-list del cliente.
+- **Badges de resultado basados en puntos, no en signo:** La lógica visual de "Exacto/Acertaste/Fallaste" debe usar los puntos obtenidos (`points > 0`), no la comparación de signos (`Math.sign(real) === Math.sign(pred)`). El sistema de puntos puede otorgar puntos parciales (ej: acertar solo goles del visitante = 1 pt) sin acertar el resultado. Lógica correcta:
+  - `pred.home === real.home && pred.away === real.away` → 🎯 Exacto
+  - `points > 0` → ✓ Acertaste
+  - `points === 0` → ✗ Fallaste
+- **Botón ? con sistema de puntos:** En fixture list y predicciones especiales hay un botón `?` que muestra el `point_system` / `special_point_system` vigente de la polla.
+
+---
+
+## Roadmap de tareas (2026-04-25)
+
+### T1 — Audit fixture sync for accidental mass deletes ✅
+**Resultado:** El sync de fixtures NO contiene operaciones DELETE. Solo INSERT/UPDATE. Riesgo de eliminación masiva: ninguno.
+
+### T2 — Confirm manual sync button vs cron sync behavior ✅
+**Resultado:** Identificadas diferencias. Se aplicaron correcciones:
+- `syncFixtures` ya no filtra por rounds (comportamiento idéntico al cron).
+- Botón "Sincronizar" va directo sin mostrar selector de fases (`skipRoundSelector`).
+- `last_fixture_sync_at` se dejó como está (intencional).
+- Rate limit ya existía: 10 syncs/hora por usuario.
+
+### T3 — Security audit (hacker role) + Supabase RLS alert ✅
+**Resultado:**
+- Auditadas 15 tablas. Ninguna vulnerabilidad crítica.
+- Alerta `rls_disabled_in_public` proviene de `api_usage_logs` y `system_settings`.
+- Migración `0028_rls_cleanup.sql` creada: activa RLS en ambas tablas SIN afectar funcionamiento.
+- **Recomendaciones 2 y 3 descartadas** por riesgo de romper flujos existentes (creación de pollas, cálculo de puntos vía service_role).
+
+### T4 — Fix "?" help button to show only relevant point system per page ✅
+**Resultado:**
+- Fixture list: filtra keys por `pointLabels` conocidos + valor > 0. No muestra keys residuales ni con 0 pts.
+- Predicciones especiales: filtra por `TYPE_CONFIG` conocidos + valor > 0.
+- Bonus "único y exacto" se muestra como nota separada en el popup (no como línea de puntos).
+
+### T5 — Configurable deadline: 1/5/15 min before match (default 5) ✅
+**Resultado:**
+- Select de cierre ahora ofrece 1/5/15 minutos. Legacy options (30/60/120/360/1440) aparecen en optgroup si la polla las tenía configuradas.
+- Fallback `|| 60` cambiado a `|| 5` en todo el código (`fixture/page`, `prediccion/actions`, `prediccion/[matchId]/page`, `configurar/page`).
+- Seed demo actualizado a 5 minutos.
+- Migración `0029_bet_deadline_default.sql`: cambia DEFAULT de 60 a 5 en la DB.
+
+### T6 — New wildcard: "Marcador único y exacto" ✅
+**Resultado:**
+- Nuevo campo `unique_exact_bonus` en `PointSystem` (0 = desactivado, 2 = doble, etc.).
+- Lógica implementada en `calculateMatchPoints` y `batchCalculateMatchPoints`: si exactamente 1 jugador acierta exacto y `unique_exact_bonus > 0`, suma `exact_score × (bonus - 1)`.
+- **Importante:** el bonus solo aplica sobre los puntos de la categoría `exact_score`, NO sobre todos los puntos del partido. El resto de categorías (correct_result, home_goals, away_goals, goal_difference, total_goals) se pagan normalmente.
+- Config UI: input en sistema de puntos para configurar el multiplicador.
+- Botón "?" en fixture list muestra la regla si está activa.
+- Tests actualizados (28 tests de scoring pasan).
+
+### T7 — Fix responsive labels in poll config (mobile truncation) ✅
+**Resultado:**
+- Filas de puntos, puntos especiales y comodines ahora usan `flex-col sm:flex-row`.
+- En móvil: label + descripción apilados arriba, input abajo (sin truncate).
+- En desktop: horizontal como antes.
+
+### T8 — Enhanced admin dashboard with API consumption, stats, charts
+**Objetivo:** Dashboard con consumo de API-Football, estadísticas de uso, gráficas.
+
+### T9 — Break down points earned in match detail page (item by item) ✅
+**Resultado:**
+- Nueva función `scoreMatchPredictionWithBreakdown` en `scoring.ts`: devuelve items individuales + baseTotal + multiplier.
+- Página de detalle de partido (`prediccion/[matchId]/page.tsx`) muestra desglose completo:
+  - Cada categoría con sus puntos (+X pts)
+  - Bonus "único exacto" si aplica
+  - Línea de comodín ×2/×3 si aplica
+  - Total final
+
+### T10 — CI automation (enable tests in GitHub Actions)
+**Objetivo:** Descomentar el paso de tests en `.github/workflows/ci.yml` y asegurar que pasen en CI.
+
+### T11 — Full audit: security, performance, load testing, Supabase limits, concurrency
+**Objetivo:** Auditoría completa de seguridad, rendimiento, límites de Supabase, concurrencia.
+
+---
+
+**Estado actual (2026-04-25, sesión terminada):** T1-T7 y T9 completadas. Build passing, 84 tests verdes.
+Migraciones 0028 y 0029 listas para deploy.
+
+### Próxima sesión — tareas pendientes
+1. **T8** — Enhanced admin dashboard (API consumption, stats, charts)
+2. **T10** — CI automation (habilitar tests en GitHub Actions)
+3. **T11** — Full audit (performance, load testing, Supabase limits, concurrency)
+
+### Cambios sin deployar aún
+- `src/components/features/dashboard/fixture-list.tsx` — filtro de keys en botón "?", bonus único exacto
+- `src/app/(dashboard)/pollas/[id]/predicciones-especiales/page.tsx` — filtro de keys en botón "?"
+- `src/components/features/dashboard/polla-settings-form.tsx` — responsive labels, deadline 1/5/15, unique_exact_bonus input
+- `src/app/(dashboard)/pollas/[id]/configurar/actions.ts` — unique_exact_bonus en updatePointSystem
+- `src/lib/scoring.ts` — `unique_exact_bonus` en PointSystem, `scoreMatchPredictionWithBreakdown`
+- `src/lib/sync/calculate-points.ts` — lógica de bonus único exacto en calculateMatchPoints + batchCalculateMatchPoints
+- `src/app/(dashboard)/pollas/[id]/prediccion/[matchId]/page.tsx` — desglose de puntos en detalle de partido
+- `src/app/(dashboard)/pollas/[id]/configurar/page.tsx` — fallback bet_deadline de 60 a 5
+- `src/app/(dashboard)/pollas/[id]/fixture/page.tsx` — fallback bet_deadline de 60 a 5
+- `src/app/(dashboard)/pollas/[id]/prediccion/actions.ts` — fallback bet_deadline de 60 a 5
+- `src/components/features/dashboard/action-buttons.tsx` — `skipRoundSelector` prop
+- `scripts/seed-demo.ts` — bet_deadline_minutes de 60 a 5
+- `supabase/migrations/0028_rls_cleanup.sql` — RLS en api_usage_logs y system_settings
+- `supabase/migrations/0029_bet_deadline_default.sql` — DEFAULT bet_deadline_minutes de 60 a 5
+
+**Nota:** Hacer `git add . && git commit` antes de deployar. Luego `npx supabase db push` para aplicar migraciones 0028 y 0029.
+
+
+---
+
+## Sesión 2026-05-12 — T10, T11 completados + fixes de audit
+
+### T10 — CI en GitHub Actions ✅
+**Resultado:**
+- `.github/workflows/ci.yml` descomentado: corre `npm run test:ci` (unit tests, excluye integración).
+- Vitest configurado con `@vitest/coverage-v8`.
+- 73 unit tests pasan en CI. 11 integration tests pasan localmente (requieren DB remota).
+
+### T11 — Scaling optimizations (batch badges, RPC, índices) ✅
+
+**Migraciones creadas:**
+
+| Migración | Estado | Qué hace |
+|-----------|--------|----------|
+| `0030_performance_indexes.sql` | Creada (no aplicada en prod) | 6 índices compuestos críticos, constraint `UNIQUE(polla_id, user_id, match_id)` en `ranking_history`, tabla `cron_locks`, RPC legacy `recalculate_polla_totals` (RETURN QUERY) |
+| `0031_rpc_recalculate_totals.sql` | Creada (no aplicada en prod) | RPC optimizado que hace `UPDATE` directo en SQL sobre `polla_members`. Devuelve `BOOLEAN`. Reemplaza la versión legacy de 0030. |
+| `0032_atomic_prediction_save.sql` | Creada (no aplicada en prod) | RPC `save_prediction_atomic` con `pg_advisory_xact_lock` para eliminar race condition en comodines. Valida deadline, comodines y hace upsert todo en una transacción. |
+
+**Cambios en código:**
+
+- `src/lib/sync/calculate-points.ts`:
+  - `recalculateAllMemberTotals(pollaId)` — intenta RPC 0031 (`data === true` → éxito), fallback a array legacy de 0030, fallback a legacy miembro por miembro.
+  - `recordRankingHistory(pollaId, matchId)` — `delete` + `insert` idempotente (no depende de constraint UNIQUE).
+  - `batchCalculateMatchPoints` — usa `recalculateAllMemberTotals` + `awardBadgesBatch`.
+
+- `src/lib/badges.ts`:
+  - `awardBadgesBatch` — deduplica badges por `(user_id, badge_id, polla_id)` antes del upsert batch. Evita error PostgreSQL `ON CONFLICT DO UPDATE command cannot affect row a second time`.
+
+- `src/lib/sync/calculate-points.ts` + `src/lib/badges.ts`:
+  - Reducción de queries por batch: de ~300 a ~15 para 100 miembros.
+
+- `src/app/(dashboard)/pollas/[id]/prediccion/actions.ts`:
+  - `savePrediction` ahora delega a `save_prediction_atomic` RPC (0032). Mantiene validación de membresía en el server action.
+  - Elimina la race condition read-then-write en comodines.
+
+- `src/app/(dashboard)/pollas/[id]/fixture/page.tsx`:
+  - Acepta `searchParams: { all?: string }`.
+  - Por defecto: carga los 200 partidos más recientes (`order DESC + limit 200`, luego `reverse()`).
+  - Con `?all=1`: carga todos los partidos sin límite.
+  - Muestra `totalCount` real de la DB.
+
+- `src/components/features/dashboard/fixture-list.tsx`:
+  - Nuevas props `totalCount` y `showingAll`.
+  - Si hay partidos ocultos: link "Mostrar todos los X partidos →".
+  - Si se muestran todos: link "← Mostrar solo los 200 más recientes".
+  - Contador actualizado: "Mostrando N de M partidos · K ocultos".
+
+### Fixes de audit report aplicados
+
+| # | Ítem | Fix aplicado |
+|---|------|-------------|
+| 2 | Race condition en comodines | RPC `save_prediction_atomic` con `pg_advisory_xact_lock` |
+| 3 | Ranking history duplicada | `delete` + `insert` idempotente en `recordRankingHistory` |
+| 4 | Índice `idx_matches_points_calculated` | Migración 0030 |
+| 5 | `max_rows = 1000` en fixture | Server-side limit 200 + link "Mostrar todos" |
+| 6 | N+1 en `recalculateMemberTotalPoints` | RPC `recalculate_polla_totals` (0031) con fallback legacy |
+
+**Pendiente:** #7 (connection pooler / Supavisor) — requiere activación manual en dashboard de Supabase, no es cambio de código.
+
+### Tests y build
+- **84 tests pasan** (7 archivos, 0 fallos).
+- **Build limpio** (Next.js compila sin errores de TypeScript).
+
+### Migraciones pendientes de aplicar en producción
+Ejecutar en Supabase SQL Editor (en orden):
+1. `0030_performance_indexes.sql`
+2. `0031_rpc_recalculate_totals.sql` (requiere `DROP FUNCTION` primero si 0030 ya se aplicó)
+3. `0032_atomic_prediction_save.sql`
+
+**Estado actual (2026-05-12, sesión terminada):** T1-T7, T9-T11 completados. Fixes de audit #2-#6 aplicados.
+Build passing, 84 tests verdes.
+
+### Próxima sesión — tareas pendientes
+1. **T8** — Enhanced admin dashboard (API consumption, stats, charts)
+2. **#7** — Activar Supavisor en Supabase dashboard (infraestructura)
+3. Deployar migraciones 0030, 0031, 0032 a producción
+
+**Nota:** Hacer `git add . && git commit` antes de deployar.
+
+
+---
+
+---
+
+## Sesión 2026-05-12 — Completa: T8, T10, T11 + Fixes de Audit + Deploy
+
+### Resumen ejecutivo
+Sesión maratónica que completó T10 (CI), T11 (optimizaciones de escalabilidad), T8 (admin dashboard), corrigió 5 de 6 ítems del audit de seguridad/performance, y hizo deploy a producción. Commit `54c526e` en `main`.
+
+---
+
+### T10 — CI en GitHub Actions ✅
+**Resultado:**
+- `.github/workflows/ci.yml` descomentado: corre `npm run test:ci` (unit tests, excluye integración).
+- Vitest configurado con `@vitest/coverage-v8`.
+- 73 unit tests pasan en CI. 11 integration tests pasan localmente (requieren DB remota).
+
+**Archivos modificados:**
+- `.github/workflows/ci.yml`
+
+---
+
+### T11 — Scaling optimizations (batch badges, RPC, índices) ✅
+
+**Auditoría previa:** `docs/T11_AUDIT_REPORT.md` documentó 8 riesgos. `docs/T11_SCALING_OPTIMIZATIONS.md` tiene el plan detallado.
+
+**Migraciones creadas:**
+
+| Migración | Estado | Qué hace |
+|-----------|--------|----------|
+| `0030_performance_indexes.sql` | Creada (pendiente en prod) | 6 índices compuestos críticos (`idx_matches_tournament_status_calculated`, `idx_predictions_polla_match`, `idx_match_points_polla_user`, `idx_special_predictions_polla_user`, `idx_matches_tournament_scheduled`, `idx_ranking_history_polla_match`), constraint `UNIQUE(polla_id, user_id, match_id)` en `ranking_history`, tabla `cron_locks`, RPC legacy `recalculate_polla_totals` (RETURN QUERY) |
+| `0031_rpc_recalculate_totals.sql` | Creada (pendiente en prod) | RPC optimizado que hace `UPDATE` directo en SQL sobre `polla_members`. Devuelve `BOOLEAN`. Reemplaza la versión legacy de 0030. Incluye `DROP FUNCTION IF EXISTS` porque PostgreSQL no permite `CREATE OR REPLACE` con cambio de tipo de retorno. |
+| `0032_atomic_prediction_save.sql` | Creada (pendiente en prod) | RPC `save_prediction_atomic` con `pg_advisory_xact_lock(hashtext('prediction:' || polla_id || ':' || user_id))` para eliminar race condition en comodines. Valida deadline, comodines y hace upsert TODO en una transacción. GRANT EXECUTE a `authenticated`. |
+
+**Cambios en código detallados:**
+
+- **`src/lib/sync/calculate-points.ts`**:
+  - `recalculateAllMemberTotals(pollaId)` — triple fallback:
+    1. Intenta RPC 0031 (`result === true` → éxito)
+    2. Fallback a array legacy de 0030 (`Array.isArray(result)`) → hace N updates con `Promise.all`
+    3. Fallback a legacy miembro por miembro (`recalculateMemberTotalPointsLegacy`)
+  - `recordRankingHistory(pollaId, matchId)` — `delete` + `insert` idempotente (no depende de constraint UNIQUE). Si `matchId === null` usa `.is('match_id', null)`.
+  - `batchCalculateMatchPoints(pollaId)` — usa `recalculateAllMemberTotals` + `awardBadgesBatch`.
+  - `calculateMatchPoints(matchId)` — usa `recalculateAllMemberTotals`.
+  - `batchCalculateSpecialPoints` — usa `recalculateAllMemberTotals`.
+  - Reducción de queries por batch: de ~300 a ~15 para 100 miembros.
+
+- **`src/lib/badges.ts`**:
+  - `awardBadgesBatch(pollaId, userContexts)` — bulk processing con deduplicación:
+    1. Calcula rachas para todos los usuarios en paralelo (`Promise.all` + `calculateAndUpdateStreaks`)
+    2. Batch queries: predicciones por usuario (`select + in`), leads por usuario (`select + in`)
+    3. `determineBadges` + badges globales (`first_prediction`, `lead_once`)
+    4. **Deduplicación:** `Map<string, badge>` con key `${user_id}:${badge_id}:${polla_id}` antes del upsert. Evita error PostgreSQL `ON CONFLICT DO UPDATE command cannot affect row a second time` cuando el mismo usuario gana el mismo badge en múltiples partidos del mismo batch.
+
+- **`src/app/(dashboard)/pollas/[id]/prediccion/actions.ts`**:
+  - `savePrediction` reescrito: mantiene validación de membresía (no hay race condition ahí), delega TODO lo demás a `save_prediction_atomic` RPC (0032).
+  - Elimina completamente el código de validación de comodines read-then-write (líneas 67-94 del archivo original).
+  - El server action ahora solo parsea inputs, valida membresía, y llama la RPC.
+
+- **`src/app/(dashboard)/pollas/[id]/fixture/page.tsx`**:
+  - Acepta `searchParams: { all?: string }`.
+  - Por defecto: carga los 200 partidos más recientes (`order('scheduled_at', { ascending: false }).limit(200)`, luego `reverse()` para quedar ASC).
+  - Con `?all=1`: carga todos los partidos sin límite.
+  - Query adicional para contar total de partidos del torneo (`count: 'exact'`).
+  - Pasa `totalCount` y `showingAll` al `FixtureList`.
+
+- **`src/components/features/dashboard/fixture-list.tsx`**:
+  - Nuevas props `totalCount` y `showingAll`.
+  - Contador actualizado: "Mostrando {sorted.length} de {matches.length} partidos · K ocultos".
+  - Link "Mostrar todos los X partidos →" cuando `totalCount > matches.length && !showingAll`.
+  - Link "← Mostrar solo los 200 más recientes" cuando `showingAll && totalCount > 200`.
+
+---
+
+### Fixes de audit report aplicados
+
+| # | Ítem | Riesgo | Fix aplicado | Archivo clave |
+|---|------|--------|-------------|---------------|
+| 2 | Race condition en comodines | Alto | RPC `save_prediction_atomic` con `pg_advisory_xact_lock` | `0032_atomic_prediction_save.sql`, `actions.ts` |
+| 3 | Ranking history duplicada | Alto | `delete` + `insert` idempotente en `recordRankingHistory` | `calculate-points.ts` |
+| 4 | Índice `idx_matches_points_calculated` | Alto | Migración 0030 | `0030_performance_indexes.sql` |
+| 5 | `max_rows = 1000` en fixture | Medio | Server-side limit 200 + link "Mostrar todos" | `fixture/page.tsx`, `fixture-list.tsx` |
+| 6 | N+1 en `recalculateMemberTotalPoints` | Medio | RPC `recalculate_polla_totals` (0031) con fallback legacy | `calculate-points.ts`, `0031_rpc_recalculate_totals.sql` |
+| 7 | Sin connection pooler | Bajo | **Pendiente** — requiere activación manual en Supabase dashboard | Infraestructura |
+
+---
+
+### T8 — Admin Dashboard (API consumption, stats, charts) ✅
+
+**Ruta:** `/admin/dashboard` (protegida por `is_system_admin`, misma guarda que `/admin/settings`).
+
+**Stats cards** (6 métricas, queries en paralelo):
+- **Usuarios registrados:** `COUNT(*)` de `profiles` + `COUNT(*)` hoy (`created_at >= CURRENT_DATE`)
+- **Pollas creadas:** breakdown por estado (`draft`/`open`/`active`/`finished`) desde `pollas.select('status')`
+- **Predicciones totales:** `COUNT(*)` de `predictions` + `COUNT(*)` hoy
+- **Partidos:** breakdown (`NS` / en vivo / terminados / otros) desde `matches.select('status')`
+- **API requests hoy:** `COUNT(*)` de `api_usage_logs` hoy vs límite diario desde `system_settings`
+- **Actividad:** suma de eventos hoy
+
+**Gráficas** (`recharts`, 3 charts en grid de 3 columnas):
+- **API requests (bar chart):** últimos 7 días. Datos agrupados por día en JS (`groupByDay`).
+- **Usuarios nuevos (line chart):** últimos 7 días. Línea azul con puntos.
+- **Predicciones (bar chart):** últimos 7 días. Barras verdes.
+
+**Actividad reciente:**
+- Últimos 20 eventos de `api_usage_logs` ordenados por `created_at DESC`.
+- Icono por tipo de acción (`load_fixtures`→Database, `sync_fixtures`→RefreshCw, `search_leagues`→Search, etc.).
+- Identificador truncado (IP o user_id).
+- Tiempo relativo ("hace 3 min", "hace 2 h").
+
+**Navegación:**
+- Botón "Configuración" en Dashboard → `/admin/settings`
+- Botón "Dashboard" en Settings → `/admin/dashboard`
+
+**Archivos nuevos:**
+- `src/app/admin/dashboard/page.tsx` — Server Component con 12 queries paralelas
+- `src/components/features/admin/dashboard-stats.tsx` — 6 stat cards
+- `src/components/features/admin/dashboard-charts.tsx` — 3 charts con recharts
+- `src/components/features/admin/recent-activity.tsx` — tabla de actividad
+
+**Archivos modificados:**
+- `src/app/admin/settings/page.tsx` — import `Button`, link a Dashboard
+
+---
+
+### Deploy realizado
+- **Commit:** `54c526e`
+- **Mensaje:** `feat: T10-T11 + admin dashboard + audit fixes`
+- **Push:** `main → origin/main` (GitHub)
+- **Auto-deploy:** Vercel debería hacer deploy automático en segundos
+
+**Migraciones aplicadas en producción:** ✅
+- `0030_performance_indexes.sql` — 6 índices compuestos + constraint UNIQUE + tabla cron_locks
+- `0031_rpc_recalculate_totals.sql` — RPC con UPDATE directo en SQL (devuelve BOOLEAN)
+- `0032_atomic_prediction_save.sql` — RPC atómica con advisory lock para comodines
+
+Verificación post-deploy: 84 tests pasan. Build limpio.
+
+---
+
+**Estado actual (2026-05-12, sesión terminada):** T1-T11 completados.
+Build passing, 84 tests verdes. Commit `eb638a9` deployado. Migraciones 0030-0032 aplicadas en producción.
+
+### Próxima sesión — tareas pendientes
+1. **Aplicar migraciones** 0030, 0031, 0032 en Supabase SQL Editor
+2. **#7** — Activar Supavisor en Supabase dashboard (infraestructura)
+3. **Notificaciones push/email** — recordatorios, alertas de resultados
+4. **Gráfica de evolución del ranking** — ya existe en `ranking-evolution-chart.tsx`, podría mejorarse
+
+**Nota:** Para activar admin dashboard, ejecutar en SQL Editor:
+```sql
+UPDATE profiles SET is_system_admin = true WHERE id = 'TU_UUID';
+```

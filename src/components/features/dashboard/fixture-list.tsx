@@ -60,6 +60,8 @@ interface Props {
   pollaStatus?: string | null;
   pollaName?: string;
   pointSystem?: any;
+  totalCount?: number;
+  showingAll?: boolean;
 }
 
 type StatusFilter = 'all' | 'open' | 'closed' | 'missing' | 'predicted';
@@ -119,7 +121,7 @@ const STATUS_LABELS: Record<StatusFilter, string> = {
   predicted: 'Predicho',
 };
 
-export function FixtureList({ pollaId, matches, predictions, betDeadlineMinutes, isAdmin, pollaStatus, pollaName, pointSystem }: Props) {
+export function FixtureList({ pollaId, matches, predictions, betDeadlineMinutes, isAdmin, pollaStatus, pollaName, pointSystem, totalCount = 0, showingAll = false }: Props) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -427,13 +429,20 @@ export function FixtureList({ pollaId, matches, predictions, betDeadlineMinutes,
                 <div className="absolute right-0 top-9 z-50 w-64 rounded-xl border bg-card shadow-lg p-3 space-y-2">
                   <p className="text-xs font-semibold text-muted-foreground">Sistema de puntos</p>
                   <div className="space-y-1">
-                    {Object.entries(pointSystem as Record<string, number>).map(([key, value]) => (
-                      <div key={key} className="flex justify-between text-xs">
-                        <span>{pointLabels[key] ?? key}</span>
-                        <span className="font-bold">+{value} pts</span>
-                      </div>
-                    ))}
+                    {Object.entries(pointSystem as Record<string, number>)
+                      .filter(([key, value]) => key in pointLabels && value > 0)
+                      .map(([key, value]) => (
+                        <div key={key} className="flex justify-between text-xs">
+                          <span>{pointLabels[key]}</span>
+                          <span className="font-bold">+{value} pts</span>
+                        </div>
+                      ))}
                   </div>
+                  {(pointSystem as Record<string, number>)?.unique_exact_bonus > 0 && (
+                    <div className="rounded-lg bg-amber-50 border border-amber-200 px-2 py-1.5 text-[11px] text-amber-700">
+                      🎯 Si sos el <strong>único</strong> que acierta el marcador exacto, tus puntos de exacto se multiplican por <strong>{(pointSystem as Record<string, number>).unique_exact_bonus}×</strong>.
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -593,11 +602,32 @@ export function FixtureList({ pollaId, matches, predictions, betDeadlineMinutes,
         )}
       </div>
 
-      {/* Contador de resultados */}
+      {/* Contador de resultados + paginación */}
       {hasMatches && (
-        <p className="text-xs text-muted-foreground">
-          Mostrando {sorted.length} de {matches.length} partidos
-        </p>
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-muted-foreground">
+            Mostrando {sorted.length} de {matches.length} partidos
+            {totalCount > matches.length && !showingAll && (
+              <span className="text-amber-600"> · {totalCount - matches.length} ocultos</span>
+            )}
+          </p>
+          {totalCount > matches.length && !showingAll && (
+            <Link
+              href={`/pollas/${pollaId}/fixture?all=1`}
+              className="text-xs font-medium text-primary hover:underline"
+            >
+              Mostrar todos los {totalCount} partidos →
+            </Link>
+          )}
+          {showingAll && totalCount > 200 && (
+            <Link
+              href={`/pollas/${pollaId}/fixture`}
+              className="text-xs font-medium text-muted-foreground hover:underline"
+            >
+              ← Mostrar solo los 200 más recientes
+            </Link>
+          )}
+        </div>
       )}
 
       {/* Lista de partidos */}

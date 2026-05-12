@@ -76,6 +76,7 @@ export async function updatePointSystem(pollaId: string, formData: FormData) {
     exact_score: clamp(formData, 'ps_exact_score', 0, 100),
     goal_difference: clamp(formData, 'ps_goal_difference', 0, 100),
     total_goals: clamp(formData, 'ps_total_goals', 0, 100),
+    unique_exact_bonus: clamp(formData, 'ps_unique_exact_bonus', 0, 10),
   };
 
   const sps = {
@@ -565,10 +566,9 @@ export async function syncFixtures(pollaId: string, selectedRounds?: string[]) {
     return { error: apiError || 'No se encontraron partidos en API-Football para sincronizar.' };
   }
 
-  // Filtrar por rounds seleccionados
-  if (selectedRounds && selectedRounds.length > 0) {
-    fixtures = fixtures.filter((f) => selectedRounds.includes(f.league?.round));
-  }
+  // NOTA: syncFixtures NO filtra por rounds (comportamiento idéntico al cron).
+  // El botón manual sincroniza TODOS los fixtures del torneo, sin importar la fase.
+  // Esto evita que partidos de nuevas fases (ej: octavos tras fase de grupos) se ignoren.
 
   // Consultar partidos existentes del torneo (id + api_football_id + status)
   const { data: existingMatches } = await admin

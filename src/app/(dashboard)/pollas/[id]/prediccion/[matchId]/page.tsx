@@ -4,6 +4,7 @@ import { redirect, notFound } from 'next/navigation';
 import { PredictionForm } from '@/components/features/dashboard/prediction-form';
 import { BackToFixtureLink } from '@/components/features/dashboard/back-to-fixture-link';
 import { MatchPredictionsList } from '@/components/features/dashboard/match-predictions-list';
+import { scoreMatchPredictionWithBreakdown, getPointSystem } from '@/lib/scoring';
 
 function formatMatchDate(iso: string) {
   const d = new Date(iso);
@@ -26,7 +27,7 @@ export default async function PrediccionPage({ params }: Props) {
 
   const { data: polla } = await supabase
     .from('pollas')
-    .select('id, name, admin_id, tournament_id, bet_deadline_minutes, status, wildcards')
+    .select('id, name, admin_id, tournament_id, bet_deadline_minutes, status, wildcards, point_system')
     .eq('id', params.id)
     .single();
 
@@ -60,7 +61,7 @@ export default async function PrediccionPage({ params }: Props) {
   const { data: nowData } = await supabase.rpc('get_server_time');
   const serverNow = new Date(nowData || new Date().toISOString());
   const deadline = new Date(match.scheduled_at);
-  deadline.setMinutes(deadline.getMinutes() - (polla.bet_deadline_minutes || 60));
+  deadline.setMinutes(deadline.getMinutes() - (polla.bet_deadline_minutes || 5));
   const isOpen = serverNow < deadline;
 
   // Cargar predicción existente + mis puntos en este partido
@@ -227,28 +228,67 @@ export default async function PrediccionPage({ params }: Props) {
         )}
       </div>
 
-      {/* Resultado de la predicción */}
+      {/* Resultado de la predicción con desglose */}
       {isFinished && prediction && match.home_goals !== null && match.away_goals !== null && (() => {
+        const ps = getPointSystem(polla.point_system);
+        const breakdown = scoreMatchPredictionWithBreakdown({
+          realHome: match.home_goals,
+          realAway: match.away_goals,
+          predHome: prediction.home_goals,
+          predAway: prediction.away_goals,
+          ps,
+          wildcard: prediction.wildcard_used as 'x2' | 'x3' | null,
+        });
+
+        // Bonus "único y exacto"
+        const exactCount = allPredictions.filter(
+          p => p.home_goals === match.home_goals && p.away_goals === match.away_goals
+        ).length;
+        const hasUniqueExact = ps.unique_exact_bonus > 0 && exactCount === 1 && (prediction.home_goals === match.home_goals && prediction.away_goals === match.away_goals);
+        const uniqueBonus = hasUniqueExact ? ps.exact_score * (ps.unique_exact_bonus - 1) : 0;
+        const finalTotal = breakdown.total + uniqueBonus;
+
         const exact = prediction.home_goals === match.home_goals && prediction.away_goals === match.away_goals;
-        if (exact) return (
-          <div className="rounded-xl bg-emerald-500 text-white px-4 py-3 text-center space-y-0.5">
-            <p className="text-lg font-black">🎯 ¡Marcador exacto!</p>
-            <p className="text-sm opacity-90">Predijiste {prediction.home_goals} - {prediction.away_goals}</p>
-            {myPoints != null && <p className="text-2xl font-black">+{myPoints} pts</p>}
-          </div>
-        );
-        if ((myPoints ?? 0) > 0) return (
-          <div className="rounded-xl bg-emerald-100 text-emerald-800 px-4 py-3 text-center space-y-0.5">
-            <p className="text-lg font-black">✓ Acertaste</p>
-            <p className="text-sm opacity-75">Predijiste {prediction.home_goals} - {prediction.away_goals}</p>
-            {myPoints != null && <p className="text-xl font-black">+{myPoints} pts</p>}
-          </div>
-        );
+        const statusLabel = exact ? '🎯 ¡Marcador exacto!' : (myPoints ?? 0) > 0 ? '✓ Acertaste' : '✗ No acertaste';
+        const statusColor = exact ? 'bg-emerald-500 text-white' : (myPoints ?? 0) > 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-700';
+
         return (
-          <div className="rounded-xl bg-red-100 text-red-700 px-4 py-3 text-center space-y-0.5">
-            <p className="text-lg font-black">✗ No acertaste</p>
-            <p className="text-sm opacity-75">Predijiste {prediction.home_goals} - {prediction.away_goals}</p>
-            {myPoints != null && <p className="text-xl font-black">{myPoints} pts</p>}
+          <div className={`rounded-xl ${statusColor} px-4 py-3 space-y-2`}>
+            <div className="text-center space-y-0.5">
+              <p className="text-lg font-black">{statusLabel}</p>
+              <p className={`text-sm ${exact ? 'opacity-90' : 'opacity-75'}`}>Predijiste {prediction.home_goals} - {prediction.away_goals}</p>
+            </div>
+
+            {breakdown.items.length > 0 && (
+              <div className={`rounded-lg ${exact ? 'bg-white/15' : 'bg-white/60'} px-3 py-2 space-y-1`}>
+                {breakdown.items.map(item => (
+                  <div key={item.key} className="flex justify-between text-xs">
+                    <span>{item.label}</span>
+                    <span className="font-bold">+{item.points} pts</span>
+                  </div>
+                ))}
+                {hasUniqueExact && (
+                  <div className="flex justify-between text-xs text-amber-700">
+                    <span>🎯 Único exacto (×{ps.unique_exact_bonus})</span>
+                    <span className="font-bold">+{uniqueBonus} pts</span>
+                  </div>
+                )}
+                {breakdown.multiplier > 1 && (
+                  <div className="flex justify-between text-xs font-semibold border-t border-current/20 pt-1 mt-1">
+                    <span>Comodín {prediction.wildcard_used?.toUpperCase()}</span>
+                    <span>×{breakdown.multiplier}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-sm font-black border-t border-current/30 pt-1 mt-1">
+                  <span>Total</span>
+                  <span>+{finalTotal} pts</span>
+                </div>
+              </div>
+            )}
+
+            {breakdown.items.length === 0 && myPoints != null && (
+              <p className="text-center text-xl font-black">{myPoints} pts</p>
+            )}
           </div>
         );
       })()}

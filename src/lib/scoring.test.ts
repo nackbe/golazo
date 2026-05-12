@@ -206,6 +206,7 @@ describe('scoreMatchPrediction', () => {
       exact_score: 10,
       goal_difference: 3,
       total_goals: 2,
+      unique_exact_bonus: 0,
     };
     const result = scoreMatchPrediction({
       realHome: 2, realAway: 1,

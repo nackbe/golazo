@@ -216,3 +216,107 @@ export async function awardBadgesFromMatch(
 
   return { awarded: badgesToAward.length };
 }
+
+/**
+ * Batch version: otorga badges para múltiples usuarios de una polla.
+ * Mucho más eficiente que llamar awardBadgesFromMatch en loop.
+ * Procesa rachas, conteos y leads en batch.
+ */
+export async function awardBadgesBatch(
+  pollaId: string,
+  userContexts: Array<{
+    userId: string;
+    exact: boolean;
+    correctResult: boolean;
+    wildcardUsed: string | null;
+    isFinal: boolean;
+  }>
+) {
+  const admin = createAdminClient();
+  if (userContexts.length === 0) return { awarded: 0 };
+
+  const userIds = Array.from(new Set(userContexts.map((c) => c.userId)));
+
+  // 1. Calcular rachas para todos los usuarios en paralelo
+  const streaksMap = new Map<string, Streaks>();
+  const streakPromises = userIds.map(async (userId) => {
+    try {
+      const { streaks } = await calculateAndUpdateStreaks(pollaId, userId);
+      streaksMap.set(userId, streaks);
+    } catch (e) {
+      console.error(`Error calculating streaks for ${userId}:`, e);
+    }
+  });
+  await Promise.all(streakPromises);
+
+  // 2. Contar predicciones para todos los usuarios en batch
+  const { data: predCounts } = await admin
+    .from('predictions')
+    .select('user_id', { count: 'exact' })
+    .eq('polla_id', pollaId)
+    .in('user_id', userIds);
+
+  const hasPrediction = new Set((predCounts || []).map((p: any) => p.user_id));
+
+  // 3. Verificar leads para todos los usuarios en batch
+  const { data: leads } = await admin
+    .from('ranking_history')
+    .select('user_id')
+    .eq('polla_id', pollaId)
+    .eq('position', 1)
+    .in('user_id', userIds);
+
+  const hasLead = new Set((leads || []).map((l: any) => l.user_id));
+
+  // 4. Determinar badges y acumular
+  const badgesToInsert: Array<{
+    user_id: string;
+    badge_id: BadgeId;
+    polla_id: string;
+    metadata: any;
+  }> = [];
+
+  for (const ctx of userContexts) {
+    const streaks = streaksMap.get(ctx.userId);
+    if (!streaks) continue;
+
+    const badges = determineBadges(streaks, ctx);
+
+    if (hasPrediction.has(ctx.userId)) {
+      badges.push({ badge_id: 'first_prediction' });
+    }
+    if (hasLead.has(ctx.userId)) {
+      badges.push({ badge_id: 'lead_once' });
+    }
+
+    for (const b of badges) {
+      badgesToInsert.push({
+        user_id: ctx.userId,
+        badge_id: b.badge_id,
+        polla_id: pollaId,
+        metadata: b.metadata ?? {},
+      });
+    }
+  }
+
+  // 5. Deduplicar por (user_id, badge_id, polla_id) — PostgreSQL no permite
+  // duplicados dentro del mismo array en ON CONFLICT DO UPDATE
+  const uniqueBadges = new Map<string, typeof badgesToInsert[0]>();
+  for (const b of badgesToInsert) {
+    const key = `${b.user_id}:${b.badge_id}:${b.polla_id}`;
+    uniqueBadges.set(key, b);
+  }
+  const deduped = Array.from(uniqueBadges.values());
+
+  // 6. Insertar todos los badges en un solo batch
+  if (deduped.length > 0) {
+    const { error } = await admin
+      .from('player_badges')
+      .upsert(deduped, { onConflict: 'user_id, badge_id, polla_id' });
+    if (error) {
+      console.error('Error batch inserting badges:', error);
+    }
+  }
+
+  return { awarded: deduped.length };
+}

@@ -186,7 +186,7 @@ async function runSeed() {
       status: 'active',
       tournament_id: tournament.id,
       admin_id: adminId,
-      bet_deadline_minutes: 60,
+      bet_deadline_minutes: 5,
       auto_approve: true,
       admin_plays: true,
       point_system: { correct_result: 1, home_goals: 1, away_goals: 1, exact_score: 3, goal_difference: 1, total_goals: 1 },

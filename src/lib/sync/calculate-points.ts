@@ -7,7 +7,7 @@ import {
   type PointSystem,
   type SpecialPointSystem,
 } from '@/lib/scoring';
-import { awardBadgesFromMatch } from '@/lib/badges';
+import { awardBadgesFromMatch, awardBadgesBatch } from '@/lib/badges';
 
 /**
  * Registra el estado del ranking después de calcular puntos.
@@ -33,13 +33,79 @@ async function recordRankingHistory(pollaId: string, matchId: string | null) {
     total_points: m.total_points || 0,
   }));
 
+  // Borrar snapshot anterior + insertar nuevo = idempotente
+  // Esto evita duplicados sin depender de constraints UNIQUE
+  const deleteQuery = admin
+    .from('ranking_history')
+    .delete()
+    .eq('polla_id', pollaId);
+  if (matchId === null) {
+    await deleteQuery.is('match_id', null);
+  } else {
+    await deleteQuery.eq('match_id', matchId);
+  }
+
   await admin.from('ranking_history').insert(rows);
 }
 
 /**
- * Recalcula total_points de un miembro sumando match_points + special_predictions.points
+ * Recalcula total_points de TODOS los miembros de una polla en una sola query (batch).
+ * Usa la función RPC recalculate_polla_totals para máxima eficiencia.
+ * Reemplaza el antiguo recalculateMemberTotalPoints(pollaId, userId) que hacía N+1 queries.
  */
-async function recalculateMemberTotalPoints(pollaId: string, userId: string) {
+async function recalculateAllMemberTotals(pollaId: string) {
+  const admin = createAdminClient();
+
+  // Intentar usar la función RPC (más eficiente: 1 query para todos)
+  // Fallback al método legacy si la RPC no existe o falla
+  try {
+    const { data: result, error } = await (admin as any).rpc('recalculate_polla_totals', {
+      p_polla_id: pollaId,
+    });
+
+    if (error) throw error;
+
+    // Versión 0031: la RPC hace UPDATE directo en SQL y devuelve true
+    if (result === true) {
+      return;
+    }
+
+    // Versión legacy 0030: la RPC devolvía un array de totales
+    if (result && Array.isArray(result) && result.length > 0) {
+      const updatePromises = (result as any[]).map((t: any) =>
+        admin
+          .from('polla_members')
+          .update({ total_points: t.total_points as number })
+          .eq('polla_id', pollaId)
+          .eq('user_id', t.user_id as string)
+      );
+      await Promise.all(updatePromises);
+      return;
+    }
+  } catch (rpcErr: any) {
+    // RPC no existe todavía (migración no aplicada) → fallback a legacy
+    console.warn('RPC recalculate_polla_totals not available, falling back to legacy:', rpcErr.message);
+  }
+
+  // Fallback legacy: recalcular miembro por miembro
+  const { data: members } = await admin
+    .from('polla_members')
+    .select('user_id')
+    .eq('polla_id', pollaId)
+    .eq('status', 'approved');
+
+  if (members) {
+    for (const member of members) {
+      await recalculateMemberTotalPointsLegacy(pollaId, member.user_id);
+    }
+  }
+}
+
+/**
+ * Versión legacy del recálculo (una sola fila).
+ * Mantenida como fallback cuando la RPC no está disponible.
+ */
+async function recalculateMemberTotalPointsLegacy(pollaId: string, userId: string) {
   const admin = createAdminClient();
 
   const { data: matchPoints } = await admin
@@ -68,6 +134,22 @@ async function recalculateMemberTotalPoints(pollaId: string, userId: string) {
     .eq('status', 'approved');
 
   return total;
+}
+
+/**
+ * Legacy: recalcula un solo miembro.
+ * Usa el batch internamente (más eficiente) o fallback legacy.
+ */
+async function recalculateMemberTotalPoints(pollaId: string, userId: string) {
+  await recalculateAllMemberTotals(pollaId);
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from('polla_members')
+    .select('total_points')
+    .eq('polla_id', pollaId)
+    .eq('user_id', userId)
+    .single();
+  return data?.total_points ?? 0;
 }
 
 /**
@@ -122,8 +204,15 @@ export async function calculateMatchPoints(matchId: string) {
 
     if (!predictions || predictions.length === 0) continue;
 
+    // Detectar "marcador único y exacto" para bonus
+    const exactPredictions = predictions.filter(
+      p => realHome === p.home_goals && realAway === p.away_goals
+    );
+    const hasUniqueExact = ps.unique_exact_bonus > 0 && exactPredictions.length === 1;
+    const uniqueExactUserId = hasUniqueExact ? exactPredictions[0].user_id : null;
+
     for (const pred of predictions) {
-      const points = scoreMatchPrediction({
+      let points = scoreMatchPrediction({
         realHome,
         realAway,
         predHome: pred.home_goals,
@@ -131,7 +220,12 @@ export async function calculateMatchPoints(matchId: string) {
         ps,
         wildcard: pred.wildcard_used as 'x2' | 'x3' | null,
       });
-      // Nota: si points === 0, el comodín se consume y no suma nada
+
+      // Bonus: marcador único y exacto
+      if (hasUniqueExact && pred.user_id === uniqueExactUserId) {
+        points += ps.exact_score * (ps.unique_exact_bonus - 1);
+      }
+
       const finalPoints = points;
 
       // 4. Upsert en match_points (idempotente)
@@ -170,19 +264,9 @@ export async function calculateMatchPoints(matchId: string) {
       processed++;
     }
 
-    // 5. Recalcular total_points de cada miembro
-    const { data: members } = await admin
-      .from('polla_members')
-      .select('id, user_id')
-      .eq('polla_id', polla.id)
-      .eq('status', 'approved');
-
-    if (members) {
-      for (const member of members) {
-        await recalculateMemberTotalPoints(polla.id, member.user_id);
-      }
-      await recordRankingHistory(polla.id, matchId);
-    }
+    // 5. Recalcular total_points de TODOS los miembros en batch
+    await recalculateAllMemberTotals(polla.id);
+    await recordRankingHistory(polla.id, matchId);
   }
 
   // 6. Marcar partido como calculado
@@ -360,11 +444,38 @@ export async function batchCalculateMatchPoints(pollaId: string): Promise<BatchR
     .in('match_id', matchIds);
 
   const ps = getPointSystem(polla.point_system);
+
+  // Pre-calcular predicciones exactas por match para bonus "único y exacto"
+  const exactCountByMatch = new Map<string, { userId: string; predId: string }[]>();
+  for (const pred of predictions || []) {
+    const match = matches.find((m) => m.id === pred.match_id);
+    if (!match || match.home_goals === null || match.away_goals === null) continue;
+    if (match.home_goals === pred.home_goals && match.away_goals === pred.away_goals) {
+      if (!exactCountByMatch.has(pred.match_id)) exactCountByMatch.set(pred.match_id, []);
+      exactCountByMatch.get(pred.match_id)!.push({ userId: pred.user_id, predId: pred.id });
+    }
+  }
+  const uniqueExactBonusByMatch = new Map<string, string>();
+  if (ps.unique_exact_bonus > 0) {
+    for (const [matchId, exacts] of Array.from(exactCountByMatch.entries())) {
+      if (exacts.length === 1) uniqueExactBonusByMatch.set(matchId, exacts[0].userId);
+    }
+  }
+
   const matchPointsToUpsert: Array<{
     polla_id: string;
     user_id: string;
     match_id: string;
     points: number;
+  }> = [];
+
+  // Acumular contextos para batch de badges
+  const badgeContexts: Array<{
+    userId: string;
+    exact: boolean;
+    correctResult: boolean;
+    wildcardUsed: string | null;
+    isFinal: boolean;
   }> = [];
 
   for (const pred of predictions || []) {
@@ -373,7 +484,7 @@ export async function batchCalculateMatchPoints(pollaId: string): Promise<BatchR
 
     const realHome = match.home_goals;
     const realAway = match.away_goals;
-    const points = scoreMatchPrediction({
+    let points = scoreMatchPrediction({
       realHome,
       realAway,
       predHome: pred.home_goals,
@@ -382,6 +493,12 @@ export async function batchCalculateMatchPoints(pollaId: string): Promise<BatchR
       wildcard: pred.wildcard_used as 'x2' | 'x3' | null,
     });
 
+    // Bonus: marcador único y exacto
+    const bonusUserId = uniqueExactBonusByMatch.get(pred.match_id);
+    if (bonusUserId === pred.user_id) {
+      points += ps.exact_score * (ps.unique_exact_bonus - 1);
+    }
+
     matchPointsToUpsert.push({
       polla_id: pollaId,
       user_id: pred.user_id,
@@ -389,21 +506,18 @@ export async function batchCalculateMatchPoints(pollaId: string): Promise<BatchR
       points,
     });
 
-    // Badges & streaks
-    try {
-      const exact = realHome === pred.home_goals && realAway === pred.away_goals;
-      const correctResult = Math.sign(realHome - realAway) === Math.sign(pred.home_goals - pred.away_goals);
-      const m = matches.find((x) => x.id === pred.match_id);
-      const isFinal = m?.round ? (m.round.toLowerCase() === 'final' || m.round.toLowerCase() === 'grand final') : false;
-      await awardBadgesFromMatch(pollaId, pred.user_id, {
-        exact,
-        correctResult,
-        wildcardUsed: pred.wildcard_used,
-        isFinal,
-      });
-    } catch (badgeErr) {
-      console.error('Error awarding badges (batch):', badgeErr);
-    }
+    // Acumular contexto para batch de badges (se procesa al final)
+    const badgeExact = realHome === pred.home_goals && realAway === pred.away_goals;
+    const badgeCorrectResult = Math.sign(realHome - realAway) === Math.sign(pred.home_goals - pred.away_goals);
+    const badgeMatch = matches.find((x) => x.id === pred.match_id);
+    const badgeIsFinal = badgeMatch?.round ? (badgeMatch.round.toLowerCase() === 'final' || badgeMatch.round.toLowerCase() === 'grand final') : false;
+    badgeContexts.push({
+      userId: pred.user_id,
+      exact: badgeExact,
+      correctResult: badgeCorrectResult,
+      wildcardUsed: pred.wildcard_used,
+      isFinal: badgeIsFinal,
+    });
   }
 
   if (matchPointsToUpsert.length > 0) {
@@ -418,15 +532,19 @@ export async function batchCalculateMatchPoints(pollaId: string): Promise<BatchR
     .update({ points_calculated: true })
     .in('id', matchIds);
 
-  const { data: members } = await admin
-    .from('polla_members')
-    .select('user_id')
-    .eq('polla_id', pollaId)
-    .eq('status', 'approved');
-
-  for (const member of members || []) {
-    await recalculateMemberTotalPoints(pollaId, member.user_id);
+  // Procesar badges en batch (mucho más eficiente que uno por uno)
+  if (badgeContexts.length > 0) {
+    try {
+      await awardBadgesBatch(pollaId, badgeContexts);
+    } catch (badgeErr) {
+      console.error('Error awarding badges batch:', badgeErr);
+    }
   }
+
+  // Recalcular totales de TODOS los miembros en batch (una sola query RPC)
+  await recalculateAllMemberTotals(pollaId);
+
+  // Registrar ranking history (idempotente gracias a UNIQUE constraint)
   await recordRankingHistory(pollaId, null);
 
   return { processed: matchPointsToUpsert.length, matches: matches.length };

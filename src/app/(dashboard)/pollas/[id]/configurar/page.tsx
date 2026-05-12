@@ -57,7 +57,7 @@ export default async function ConfigurarPollaPage({ params }: Props) {
     auto_approve: polla.auto_approve ?? false,
     admin_plays: polla.admin_plays ?? true,
     auto_random_prediction: polla.auto_random_prediction ?? false,
-    bet_deadline_minutes: polla.bet_deadline_minutes ?? 60,
+    bet_deadline_minutes: polla.bet_deadline_minutes ?? 5,
     point_system: polla.point_system as Record<string, number> | null,
     wildcards: polla.wildcards as Array<{ type: string; quantity: number }> | null,
     special_point_system: (polla.special_point_system as Record<string, number> | null) ?? {
@@ -217,7 +217,7 @@ export default async function ConfigurarPollaPage({ params }: Props) {
                   : 'No hay partidos cargados. Esta opción agrega partidos nuevos sin borrar los existentes.'}
               </p>
             </div>
-            <LoadFixturesButton pollaId={params.id} tournamentId={polla.tournament_id!} loadAction={syncFixtures} label="Sincronizar" />
+            <LoadFixturesButton pollaId={params.id} tournamentId={polla.tournament_id!} loadAction={syncFixtures} label="Sincronizar" skipRoundSelector />
           </div>
 
           {hasFixtures && matches.length > 0 && (

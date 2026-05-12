@@ -11,9 +11,10 @@ interface LoadFixturesButtonProps {
   tournamentId: string;
   loadAction: (pollaId: string, selectedRounds?: string[]) => Promise<any>;
   label?: string;
+  skipRoundSelector?: boolean;
 }
 
-export function LoadFixturesButton({ pollaId, tournamentId, loadAction, label }: LoadFixturesButtonProps) {
+export function LoadFixturesButton({ pollaId, tournamentId, loadAction, label, skipRoundSelector }: LoadFixturesButtonProps) {
   const [isPending, startTransition] = useTransition();
   const [feedback, setFeedback] = useState<{ type: 'error' | 'warning' | 'success'; message: string } | null>(null);
   const [showRounds, setShowRounds] = useState(false);
@@ -188,7 +189,7 @@ export function LoadFixturesButton({ pollaId, tournamentId, loadAction, label }:
       <Button
         type="button"
         disabled={isPending || loadingRounds}
-        onClick={openRoundsSelector}
+        onClick={skipRoundSelector ? () => confirmLoad([]) : openRoundsSelector}
         className="gap-1.5 bg-amber-600 hover:bg-amber-700"
       >
         {isPending || loadingRounds ? (

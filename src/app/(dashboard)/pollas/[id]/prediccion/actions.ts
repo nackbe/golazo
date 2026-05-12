@@ -1,7 +1,6 @@
 'use server';
 
 import { createClient } from '@/lib/supabase/server';
-import { createAdminClient } from '@/lib/supabase/admin';
 
 export async function savePrediction(formData: FormData) {
   const supabase = await createClient();
@@ -30,85 +29,33 @@ export async function savePrediction(formData: FormData) {
     return { error: 'No sos miembro aprobado de esta polla.' };
   }
 
-  // Validar que el partido exista y pertenezca al torneo de la polla
-  const { data: matchPolla } = await supabase
-    .from('matches')
-    .select('id, scheduled_at, tournament_id')
-    .eq('id', matchId)
-    .single();
-
-  if (!matchPolla) return { error: 'Partido no encontrado.' };
-
-  const { data: polla } = await supabase
-    .from('pollas')
-    .select('id, bet_deadline_minutes, tournament_id, status')
-    .eq('id', pollaId)
-    .single();
-
-  if (!polla) return { error: 'Polla no encontrada.' };
-  if (polla.status === 'draft') {
-    return { error: 'La polla aún no ha iniciado. El administrador debe activarla desde Configuración.' };
-  }
-  if (matchPolla.tournament_id !== polla.tournament_id) {
-    return { error: 'El partido no pertenece a esta polla.' };
-  }
-
-  // Validar deadline con hora del servidor (PostgreSQL)
-  const admin = createAdminClient();
-  const { data: nowData } = await admin.rpc('get_server_time');
-  const serverNow = new Date(nowData || new Date().toISOString());
-  const deadline = new Date(matchPolla.scheduled_at);
-  deadline.setMinutes(deadline.getMinutes() - (polla.bet_deadline_minutes || 60));
-
-  if (serverNow >= deadline) {
-    return { error: 'El plazo de apuestas para este partido ya cerró.' };
-  }
-
-  // Validar comodines disponibles
-  if (wildcard) {
-    const { data: playerWildcards } = await admin
-      .from('predictions')
-      .select('wildcard_used, match_id')
-      .eq('polla_id', pollaId)
-      .eq('user_id', user.id)
-      .not('wildcard_used', 'is', null);
-
-    const { data: pollaWildcards } = await admin
-      .from('pollas')
-      .select('wildcards')
-      .eq('id', pollaId)
-      .single();
-
-    const totalX2 = (pollaWildcards?.wildcards as any)?.find((w: any) => w.type === 'x2')?.quantity ?? 2;
-    const totalX3 = (pollaWildcards?.wildcards as any)?.find((w: any) => w.type === 'x3')?.quantity ?? 1;
-
-    const usedX2 = (playerWildcards || []).filter((w) => w.wildcard_used === 'x2' && w.match_id !== matchId).length;
-    const usedX3 = (playerWildcards || []).filter((w) => w.wildcard_used === 'x3' && w.match_id !== matchId).length;
-
-    if (wildcard === 'x2' && usedX2 >= totalX2) {
-      return { error: 'No tenés comodines x2 disponibles.' };
+  // Todo lo demás (deadline, comodines, upsert) se hace atómicamente via RPC
+  // para eliminar la race condition de read-then-write en comodines.
+  const { data: result, error: rpcError } = await supabase.rpc(
+    'save_prediction_atomic',
+    {
+      p_polla_id: pollaId,
+      p_user_id: user.id,
+      p_match_id: matchId,
+      p_home_goals: homeGoals,
+      p_away_goals: awayGoals,
+      p_wildcard: wildcard,
     }
-    if (wildcard === 'x3' && usedX3 >= totalX3) {
-      return { error: 'No tenés comodines x3 disponibles.' };
-    }
+  );
+
+  if (rpcError) {
+    return { error: rpcError.message };
   }
 
-  // Upsert predicción
-  const { error } = await supabase
-    .from('predictions')
-    .upsert(
-      {
-        polla_id: pollaId,
-        user_id: user.id,
-        match_id: matchId,
-        home_goals: homeGoals,
-        away_goals: awayGoals,
-        wildcard_used: wildcard as 'x2' | 'x3' | null,
-      },
-      { onConflict: 'user_id, polla_id, match_id' }
-    );
+  // La RPC devuelve un JSONB con 'success' o 'error'
+  const payload = result as { success?: boolean; error?: string } | null;
+  if (payload?.error) {
+    return { error: payload.error };
+  }
 
-  if (error) return { error: error.message };
+  if (!payload?.success) {
+    return { error: 'Error desconocido al guardar la predicción.' };
+  }
 
   return { success: true };
 }

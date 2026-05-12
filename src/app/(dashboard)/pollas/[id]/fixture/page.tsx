@@ -7,9 +7,10 @@ import { FixtureList } from '@/components/features/dashboard/fixture-list';
 
 interface Props {
   params: { id: string };
+  searchParams: { all?: string };
 }
 
-export default async function FixturePage({ params }: Props) {
+export default async function FixturePage({ params, searchParams }: Props) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/login');
@@ -34,12 +35,35 @@ export default async function FixturePage({ params }: Props) {
   const isMember = membership?.status === 'approved';
   if (!isAdmin && !isMember) redirect('/pollas');
 
+  const showingAll = searchParams.all === '1';
+
+  // Contar total de partidos del torneo (siempre, para mostrar el mensaje)
+  const { count: totalCount } = await supabase
+    .from('matches')
+    .select('*', { count: 'exact', head: true })
+    .eq('tournament_id', polla.tournament_id);
+
   // Cargar partidos del torneo
-  const { data: matches } = await supabase
+  // Por defecto: solo los 200 más recientes (futuros + pasados recientes)
+  // Con ?all=1: todos los partidos
+  let matchesQuery = supabase
     .from('matches')
     .select('*, home_team:teams!matches_home_team_id_fkey(*), away_team:teams!matches_away_team_id_fkey(*)')
-    .eq('tournament_id', polla.tournament_id)
-    .order('scheduled_at', { ascending: true });
+    .eq('tournament_id', polla.tournament_id);
+
+  if (!showingAll) {
+    matchesQuery = matchesQuery
+      .order('scheduled_at', { ascending: false })
+      .limit(200);
+  } else {
+    matchesQuery = matchesQuery
+      .order('scheduled_at', { ascending: true });
+  }
+
+  const { data: matchesRaw } = await matchesQuery;
+
+  // Si traemos los últimos 200 (orden DESC), revertir para que queden ASC
+  const matches = showingAll ? (matchesRaw || []) : [...(matchesRaw || [])].reverse();
 
   // Cargar predicciones del usuario + puntos obtenidos
   const [{ data: rawPredictions }, { data: matchPoints }] = await Promise.all([
@@ -75,19 +99,21 @@ export default async function FixturePage({ params }: Props) {
       <div className="space-y-1">
         <h1 className="text-2xl font-bold">Fixture</h1>
         <p className="text-sm text-muted-foreground">
-          {polla.tournaments?.name || 'Torneo'} · {matches?.length || 0} partidos
+          {polla.tournaments?.name || 'Torneo'} · {totalCount || 0} partidos
         </p>
       </div>
 
       <FixtureList
         pollaId={params.id}
-        matches={matches || []}
+        matches={matches}
         predictions={predictions || []}
-        betDeadlineMinutes={polla.bet_deadline_minutes || 60}
+        betDeadlineMinutes={polla.bet_deadline_minutes || 5}
         isAdmin={isAdmin}
         pollaStatus={polla.status}
         pollaName={polla.name}
         pointSystem={polla.point_system}
+        totalCount={totalCount ?? 0}
+        showingAll={showingAll}
       />
     </div>
   );

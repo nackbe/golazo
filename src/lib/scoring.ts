@@ -5,6 +5,7 @@ export interface PointSystem {
   exact_score: number;
   goal_difference: number;
   total_goals: number;
+  unique_exact_bonus: number; // 0 = desactivado. Si > 0 y exactamente 1 jugador acierta exacto, multiplica exact_score por este valor.
 }
 
 export interface SpecialPointSystem {
@@ -23,6 +24,7 @@ export const DEFAULT_POINTS: PointSystem = {
   exact_score: 3,
   goal_difference: 1,
   total_goals: 1,
+  unique_exact_bonus: 0,
 };
 
 export const DEFAULT_SPECIAL_POINTS: SpecialPointSystem = {
@@ -51,62 +53,79 @@ interface ScorePredictionInput {
   wildcard?: 'x2' | 'x3' | null;
 }
 
+export interface PointBreakdownItem {
+  key: string;
+  label: string;
+  points: number;
+}
+
+export interface PointBreakdown {
+  items: PointBreakdownItem[];
+  baseTotal: number;
+  total: number;
+  multiplier: number;
+}
+
+const BREAKDOWN_LABELS: Record<string, string> = {
+  correct_result: 'Resultado correcto',
+  home_goals: 'Goles local exactos',
+  away_goals: 'Goles visitante exactos',
+  exact_score: 'Marcador exacto',
+  goal_difference: 'Diferencia de goles',
+  total_goals: 'Total de goles',
+};
+
 /**
- * Calcula los puntos de una predicción de forma pura (sin side effects).
+ * Calcula el desglose de puntos de una predicción (sin side effects).
+ * El bonus de "único y exacto" NO se incluye aquí — se aplica externamente.
  */
-export function scoreMatchPrediction({
+export function scoreMatchPredictionWithBreakdown({
   realHome,
   realAway,
   predHome,
   predAway,
   ps,
   wildcard,
-}: ScorePredictionInput): number {
+}: ScorePredictionInput): PointBreakdown {
   const realDiff = realHome - realAway;
   const realTotal = realHome + realAway;
   const predDiff = predHome - predAway;
   const predTotal = predHome + predAway;
 
-  let points = 0;
+  const items: PointBreakdownItem[] = [];
 
-  // Resultado correcto (quién gana/empata)
-  if (Math.sign(realDiff) === Math.sign(predDiff)) {
-    points += ps.correct_result;
+  function add(key: string, condition: boolean, value: number) {
+    if (condition && value > 0) {
+      items.push({ key, label: BREAKDOWN_LABELS[key] ?? key, points: value });
+    }
   }
 
-  // Goles local exactos
-  if (realHome === predHome) {
-    points += ps.home_goals;
-  }
+  add('correct_result', Math.sign(realDiff) === Math.sign(predDiff), ps.correct_result);
+  add('home_goals', realHome === predHome, ps.home_goals);
+  add('away_goals', realAway === predAway, ps.away_goals);
+  add('exact_score', realHome === predHome && realAway === predAway, ps.exact_score);
+  add('goal_difference', Math.abs(realDiff) === Math.abs(predDiff), ps.goal_difference);
+  add('total_goals', realTotal === predTotal, ps.total_goals);
 
-  // Goles visitante exactos
-  if (realAway === predAway) {
-    points += ps.away_goals;
-  }
+  const baseTotal = items.reduce((sum, i) => sum + i.points, 0);
+  let multiplier = 1;
+  if (baseTotal > 0 && wildcard === 'x2') multiplier = 2;
+  else if (baseTotal > 0 && wildcard === 'x3') multiplier = 3;
 
-  // Marcador exacto
-  if (realHome === predHome && realAway === predAway) {
-    points += ps.exact_score;
-  }
+  return {
+    items,
+    baseTotal,
+    total: baseTotal * multiplier,
+    multiplier,
+  };
+}
 
-  // Diferencia de goles (valor absoluto — da igual quién gana por más)
-  if (Math.abs(realDiff) === Math.abs(predDiff)) {
-    points += ps.goal_difference;
-  }
-
-  // Total de goles exacto
-  if (realTotal === predTotal) {
-    points += ps.total_goals;
-  }
-
-  // Comodines
-  if (points > 0 && wildcard === 'x2') {
-    points = points * 2;
-  } else if (points > 0 && wildcard === 'x3') {
-    points = points * 3;
-  }
-
-  return points;
+/**
+ * Calcula los puntos de una predicción de forma pura (sin side effects).
+ * Wrapper sobre scoreMatchPredictionWithBreakdown que solo devuelve el total.
+ */
+export function scoreMatchPrediction(input: ScorePredictionInput): number {
+  return scoreMatchPredictionWithBreakdown(input).total;
 }
 
 export interface TournamentMatch {

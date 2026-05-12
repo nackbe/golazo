@@ -12,6 +12,7 @@
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
     "test": "vitest",
+    "test:ci": "vitest run --exclude 'src/lib/test/integration.test.ts'",
     "test:coverage": "vitest --coverage",
     "db:types": "supabase gen types typescript --project-id $SUPABASE_PROJECT_ID --schema public > src/types/database.ts",
     "sync:dev": "tsx scripts/sync-results.ts"

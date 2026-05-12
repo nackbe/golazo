@@ -1,9 +1,10 @@
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
-import { Settings, ArrowLeft } from 'lucide-react';
+import { Settings, ArrowLeft, LayoutDashboard } from 'lucide-react';
 import Link from 'next/link';
 import { getAllSettings } from '@/lib/settings';
 import { SettingsForm } from './settings-form';
+import { Button } from '@/components/ui/button';
 
 export const dynamic = 'force-dynamic';
 
@@ -95,6 +96,12 @@ export default async function AdminSettingsPage() {
         >
           <ArrowLeft className="h-4 w-4" />
           Volver
+        </Link>
+        <Link href="/admin/dashboard">
+          <Button variant="outline" size="sm" className="gap-2">
+            <LayoutDashboard className="h-4 w-4" />
+            Dashboard
+          </Button>
         </Link>
       </div>
 

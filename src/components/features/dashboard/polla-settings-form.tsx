@@ -16,6 +16,13 @@ const STATUS_OPTIONS = [
 ];
 
 const DEADLINE_OPTIONS = [
+  { value: '1', label: '1 minuto antes' },
+  { value: '5', label: '5 minutos antes' },
+  { value: '15', label: '15 minutos antes' },
+];
+
+// Opciones legacy para backward compatibility (pollas creadas antes del cambio)
+const LEGACY_DEADLINE_OPTIONS = [
   { value: '30', label: '30 minutos antes' },
   { value: '60', label: '1 hora antes' },
   { value: '120', label: '2 horas antes' },
@@ -31,6 +38,13 @@ const POINT_FIELDS = [
   { key: 'goal_difference', label: 'Diferencia de goles exacta', description: 'Acierta la diferencia entre goles de ambos equipos', defaultVal: 1 },
   { key: 'total_goals', label: 'Total de goles exacto', description: 'Acierta la suma de goles del partido', defaultVal: 1 },
 ];
+
+const UNIQUE_EXACT_FIELD = {
+  key: 'unique_exact_bonus',
+  label: 'Bonus marcador único y exacto',
+  description: 'Si solo un jugador acierta el marcador exacto, multiplica sus puntos de exacto por este valor. 0 = desactivado.',
+  defaultVal: 0,
+};
 
 const SPECIAL_FIELDS = [
   { key: 'champion', label: 'Campeón', description: 'Acierta el campeón del torneo', defaultVal: 10 },
@@ -239,6 +253,16 @@ export function PollaSettingsForm({ polla }: { polla: Polla }) {
             {DEADLINE_OPTIONS.map(o => (
               <option key={o.value} value={o.value}>{o.label}</option>
             ))}
+            {/* Si el valor actual es legacy, mostrarlo para que el admin sepa qué tiene */}
+            {LEGACY_DEADLINE_OPTIONS.some(o => o.value === String(polla.bet_deadline_minutes)) && (
+              <optgroup label="Valor actual (ya no recomendado)">
+                {LEGACY_DEADLINE_OPTIONS
+                  .filter(o => o.value === String(polla.bet_deadline_minutes))
+                  .map(o => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+              </optgroup>
+            )}
           </select>
         </div>
 
@@ -295,10 +319,10 @@ export function PollaSettingsForm({ polla }: { polla: Polla }) {
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Predicciones de partido</p>
           <div className="space-y-3">
             {POINT_FIELDS.map(f => (
-              <div key={f.key} className="flex items-center justify-between gap-4">
+              <div key={f.key} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold">{f.label}</p>
-                  <p className="text-xs text-muted-foreground truncate">{f.description}</p>
+                  <p className="text-xs text-muted-foreground sm:truncate">{f.description}</p>
                 </div>
                 <NumberInput name={`ps_${f.key}`} defaultValue={ps(f.key, f.defaultVal)} min={0} max={100} disabled={points.isPending || isLocked} />
               </div>
@@ -310,10 +334,10 @@ export function PollaSettingsForm({ polla }: { polla: Polla }) {
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Predicciones especiales de torneo</p>
           <div className="space-y-3">
             {SPECIAL_FIELDS.map(f => (
-              <div key={f.key} className="flex items-center justify-between gap-4">
+              <div key={f.key} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold">{f.label}</p>
-                  <p className="text-xs text-muted-foreground truncate">{f.description}</p>
+                  <p className="text-xs text-muted-foreground sm:truncate">{f.description}</p>
                 </div>
                 <NumberInput name={`ps_${f.key}`} defaultValue={sps(f.key, f.defaultVal)} min={0} max={100} disabled={points.isPending || isLocked} />
               </div>
@@ -321,8 +345,19 @@ export function PollaSettingsForm({ polla }: { polla: Polla }) {
           </div>
         </div>
 
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 border-t border-border pt-4">
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold">{UNIQUE_EXACT_FIELD.label}</p>
+            <p className="text-xs text-muted-foreground">{UNIQUE_EXACT_FIELD.description}</p>
+          </div>
+          <NumberInput name={`ps_${UNIQUE_EXACT_FIELD.key}`} defaultValue={ps(UNIQUE_EXACT_FIELD.key, UNIQUE_EXACT_FIELD.defaultVal)} min={0} max={10} disabled={points.isPending || isLocked} />
+        </div>
+
         <div className="rounded-xl bg-primary/5 border border-primary/20 px-4 py-3 text-xs text-muted-foreground">
           <strong className="text-foreground">Los puntos de partido son acumulables.</strong> Si acertás el marcador exacto, ganás al mismo tiempo los puntos por goles local exactos, goles visitante exactos, marcador exacto, diferencia de goles y total de goles. Con los valores default eso suma <strong className="text-foreground">8 puntos</strong> por partido (sin comodín).
+          {ps('unique_exact_bonus', 0) > 0 && (
+            <span className="block mt-1">Si sos el <strong className="text-foreground">único</strong> que acierta el marcador exacto, tus puntos de exacto se multiplican por <strong className="text-foreground">{ps('unique_exact_bonus', 0)}×</strong>.</span>
+          )}
         </div>
       </Block>
 
@@ -342,7 +377,7 @@ export function PollaSettingsForm({ polla }: { polla: Polla }) {
         )}
 
         <div className="space-y-4">
-          <div className="flex items-center justify-between gap-4 rounded-xl border border-border p-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 rounded-xl border border-border p-4">
             <div className="flex-1">
               <p className="text-sm font-semibold">Comodines x2</p>
               <p className="text-xs text-muted-foreground mt-0.5">Multiplica x2 todos los puntos de un partido.</p>
@@ -350,7 +385,7 @@ export function PollaSettingsForm({ polla }: { polla: Polla }) {
             <NumberInput name="wc_x2" defaultValue={wc('x2', 2)} min={0} max={100} disabled={wildcards.isPending || isLocked} />
           </div>
 
-          <div className="flex items-center justify-between gap-4 rounded-xl border border-border p-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 rounded-xl border border-border p-4">
             <div className="flex-1">
               <p className="text-sm font-semibold">Comodines x3</p>
               <p className="text-xs text-muted-foreground mt-0.5">Multiplica x3 todos los puntos de un partido.</p>
