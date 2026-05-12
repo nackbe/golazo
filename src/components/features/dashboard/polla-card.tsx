@@ -1,10 +1,7 @@
 'use client';
 
-import { useTransition, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Crown, Hash, Trash2, AlertTriangle, User } from 'lucide-react';
-import { deletePolla } from '@/app/(dashboard)/pollas/actions';
+import { Crown, Hash, User, Calendar } from 'lucide-react';
 
 function formatRelativeDate(iso: string) {
   const d = new Date(iso);
@@ -34,36 +31,22 @@ interface Props {
     created_at?: string;
     tournaments?: { name: string } | null;
     isAdmin: boolean;
+    adminAlias?: string;
+    matchStats?: { total: number; finished: number };
   };
 }
 
 export function PollaCard({ polla }: Props) {
-  const [isPending, startTransition] = useTransition();
-  const [showConfirm, setShowConfirm] = useState(false);
-  const router = useRouter();
-
-  function handleDelete(e: React.MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    setShowConfirm(true);
-  }
-
-  function confirmDelete(e: React.MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    startTransition(async () => {
-      const result = await deletePolla(polla.id);
-      if (result?.error) {
-        alert(result.error);
-      } else {
-        router.refresh();
-      }
-    });
-  }
+  const { total = 0, finished = 0 } = polla.matchStats ?? {};
+  const progress = total > 0 ? Math.round((finished / total) * 100) : 0;
+  const hasStarted = total > 0;
 
   return (
-    <div className="group relative flex flex-col rounded-2xl bg-card p-5 shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5 border border-border/50">
-      <Link href={`/pollas/${polla.id}`} className="flex-1">
+    <Link
+      href={`/pollas/${polla.id}`}
+      className="group flex flex-col rounded-2xl bg-card p-5 shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5 border border-border/50"
+    >
+      <div className="flex-1">
         <div className="mb-3 flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
             <h3 className="truncate font-bold text-lg leading-tight group-hover:text-primary transition-colors">
@@ -84,6 +67,32 @@ export function PollaCard({ polla }: Props) {
           )}
         </div>
 
+        {/* Admin name */}
+        {!polla.isAdmin && polla.adminAlias && (
+          <p className="mb-2 text-xs text-muted-foreground">
+            Por <span className="font-medium text-foreground">{polla.adminAlias}</span>
+          </p>
+        )}
+
+        {/* Progress bar */}
+        {hasStarted && (
+          <div className="mb-3">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+                <Calendar className="h-3 w-3" />
+                {finished} de {total} partidos
+              </span>
+              <span className="text-[11px] font-semibold text-foreground">{progress}%</span>
+            </div>
+            <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+              <div
+                className="h-full rounded-full bg-primary transition-all"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+          </div>
+        )}
+
         <div className="mt-auto space-y-2">
           <div className="flex items-center justify-between">
             <span className="inline-flex items-center gap-1 rounded-lg bg-muted px-2.5 py-1 font-mono text-xs font-semibold tracking-wider text-foreground">
@@ -100,42 +109,7 @@ export function PollaCard({ polla }: Props) {
             </p>
           )}
         </div>
-      </Link>
-
-      {/* Botón borrar — solo para admin */}
-      {polla.isAdmin && (
-        <div className="mt-3 pt-3 border-t border-border/50">
-          {showConfirm ? (
-            <div className="flex items-center gap-2">
-              <div className="flex-1 flex items-center gap-1.5 text-xs text-red-600">
-                <AlertTriangle className="h-3.5 w-3.5" />
-                ¿Seguro?
-              </div>
-              <button
-                onClick={confirmDelete}
-                disabled={isPending}
-                className="rounded-md bg-red-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50"
-              >
-                {isPending ? '...' : 'Sí, borrar'}
-              </button>
-              <button
-                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowConfirm(false); }}
-                className="rounded-md border border-border px-2.5 py-1 text-xs hover:bg-muted"
-              >
-                Cancelar
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={handleDelete}
-              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-red-600 transition-colors"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-              Borrar polla
-            </button>
-          )}
-        </div>
-      )}
-    </div>
+      </div>
+    </Link>
   );
 }

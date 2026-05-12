@@ -6,6 +6,7 @@ import { PollaSettingsForm } from '@/components/features/dashboard/polla-setting
 import { PendingMembersList } from '@/components/features/dashboard/pending-members-list';
 import { TournamentSearch } from '@/components/features/dashboard/tournament-search';
 import { LoadFixturesButton, ActivatePollaButton, RecalculatePointsButton } from '@/components/features/dashboard/action-buttons';
+import { DeletePollaSection } from '@/components/features/dashboard/delete-polla-section';
 import { selectTournament, loadFixtures, syncFixtures } from './actions';
 
 export const dynamic = 'force-dynamic';
@@ -290,6 +291,9 @@ export default async function ConfigurarPollaPage({ params }: Props) {
       {pendingMembers && pendingMembers.length > 0 && (
         <PendingMembersList pollaId={params.id} members={pendingMembers} />
       )}
+
+      {/* Borrar polla */}
+      <DeletePollaSection pollaId={polla.id} pollaName={polla.name} />
 
     </div>
   );

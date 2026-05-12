@@ -19,7 +19,7 @@ export default async function PollasPage() {
       .order('created_at', { ascending: false }),
     supabase
       .from('polla_members')
-      .select('polla_id, alias, pollas(id, name, code, status, created_at, tournaments(name))')
+      .select('polla_id, alias, pollas(id, name, code, status, created_at, admin_id, tournament_id, tournaments(name))')
       .eq('user_id', user.id)
       .eq('status', 'approved'),
   ]);
@@ -31,9 +31,54 @@ export default async function PollasPage() {
       .map((m) => m.pollas)
       .filter(Boolean) ?? [];
 
+  // Collect all admin IDs and tournament IDs for batch lookups
+  const allPollasRaw = [
+    ...(adminPollas ?? []),
+    ...(memberOnlyPollas as any[]),
+  ];
+
+  const adminIds = Array.from(new Set(allPollasRaw.map((p) => p.admin_id).filter(Boolean)));
+  const tournamentIds = Array.from(new Set(allPollasRaw.map((p) => p.tournament_id).filter(Boolean)));
+
+  // Batch lookup: admin aliases
+  const { data: adminProfiles } = adminIds.length > 0
+    ? await supabase.from('profiles').select('id, alias').in('id', adminIds)
+    : { data: [] };
+
+  const adminAliasById = new Map((adminProfiles ?? []).map((p) => [p.id, p.alias]));
+
+  // Batch lookup: match counts per tournament (total + finished)
+  const { data: matchCounts } = tournamentIds.length > 0
+    ? await supabase
+        .from('matches')
+        .select('tournament_id, status')
+        .in('tournament_id', tournamentIds)
+    : { data: [] };
+
+  const matchStatsByTournament = new Map<string, { total: number; finished: number }>();
+  for (const m of matchCounts ?? []) {
+    const tid = m.tournament_id as string;
+    const current = matchStatsByTournament.get(tid) ?? { total: 0, finished: 0 };
+    current.total++;
+    if (['FT', 'AET', 'AFT', 'PEN'].includes(m.status)) {
+      current.finished++;
+    }
+    matchStatsByTournament.set(tid, current);
+  }
+
   const allPollas = [
-    ...(adminPollas ?? []).map((p) => ({ ...p, isAdmin: true })),
-    ...(memberOnlyPollas ?? []).map((p) => ({ ...p as any, isAdmin: false })),
+    ...(adminPollas ?? []).map((p) => ({
+      ...p,
+      isAdmin: true,
+      adminAlias: adminAliasById.get(p.admin_id) ?? 'Admin',
+      matchStats: matchStatsByTournament.get(p.tournament_id) ?? { total: 0, finished: 0 },
+    })),
+    ...(memberOnlyPollas as any[]).map((p) => ({
+      ...p,
+      isAdmin: false,
+      adminAlias: adminAliasById.get(p.admin_id) ?? 'Admin',
+      matchStats: matchStatsByTournament.get(p.tournament_id) ?? { total: 0, finished: 0 },
+    })),
   ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
   return (
