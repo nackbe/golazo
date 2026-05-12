@@ -24,7 +24,7 @@ interface League {
 
 interface Props {
   pollaId: string;
-  onSelect: (formData: FormData) => void;
+  onSelect: (formData: FormData) => void | Promise<any>;
   currentTournament?: {
     id: string;
     name: string;
@@ -101,7 +101,7 @@ export function TournamentSearch({ pollaId, onSelect, currentTournament }: Props
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  function handleSelect(league: League) {
+  async function handleSelect(league: League) {
     const current = league.seasons.find((s) => s.current);
     const latest = league.seasons[league.seasons.length - 1];
     const season = current?.year ?? latest?.year ?? null;
@@ -121,7 +121,11 @@ export function TournamentSearch({ pollaId, onSelect, currentTournament }: Props
     formData.append('logo_url', league.logo);
     formData.append('season', String(season));
 
-    onSelect(formData);
+    try {
+      await onSelect(formData);
+    } finally {
+      setSelecting(false);
+    }
   }
 
   return (
