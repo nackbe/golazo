@@ -37,14 +37,8 @@ const POINT_FIELDS = [
   { key: 'exact_score', label: 'Marcador exacto', description: 'Acierta el resultado final exacto (ej: 2-1)', defaultVal: 3 },
   { key: 'goal_difference', label: 'Diferencia de goles exacta', description: 'Acierta la diferencia entre goles de ambos equipos', defaultVal: 1 },
   { key: 'total_goals', label: 'Total de goles exacto', description: 'Acierta la suma de goles del partido', defaultVal: 1 },
+  { key: 'unique_exact_bonus', label: 'Bonus marcador único y exacto', description: 'Si solo un jugador acierta el marcador exacto, multiplica sus puntos de exacto por este valor. 0 = desactivado.', defaultVal: 0 },
 ];
-
-const UNIQUE_EXACT_FIELD = {
-  key: 'unique_exact_bonus',
-  label: 'Bonus marcador único y exacto',
-  description: 'Si solo un jugador acierta el marcador exacto, multiplica sus puntos de exacto por este valor. 0 = desactivado.',
-  defaultVal: 0,
-};
 
 const SPECIAL_FIELDS = [
   { key: 'champion', label: 'Campeón', description: 'Acierta el campeón del torneo', defaultVal: 10 },
@@ -343,14 +337,6 @@ export function PollaSettingsForm({ polla }: { polla: Polla }) {
               </div>
             ))}
           </div>
-        </div>
-
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 border-t border-border pt-4">
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold">{UNIQUE_EXACT_FIELD.label}</p>
-            <p className="text-xs text-muted-foreground">{UNIQUE_EXACT_FIELD.description}</p>
-          </div>
-          <NumberInput name={`ps_${UNIQUE_EXACT_FIELD.key}`} defaultValue={ps(UNIQUE_EXACT_FIELD.key, UNIQUE_EXACT_FIELD.defaultVal)} min={0} max={10} disabled={points.isPending || isLocked} />
         </div>
 
         <div className="rounded-xl bg-primary/5 border border-primary/20 px-4 py-3 text-xs text-muted-foreground">

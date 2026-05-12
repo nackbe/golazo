@@ -50,6 +50,7 @@ export function TournamentSearch({ pollaId, onSelect, currentTournament }: Props
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<League[]>([]);
   const [loading, setLoading] = useState(false);
+  const [selecting, setSelecting] = useState(false);
   const [open, setOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -106,6 +107,7 @@ export function TournamentSearch({ pollaId, onSelect, currentTournament }: Props
     const season = current?.year ?? latest?.year ?? null;
     if (!season) return;
 
+    setSelecting(true);
     setOpen(false);
     setQuery('');
     setResults([]);
@@ -124,21 +126,31 @@ export function TournamentSearch({ pollaId, onSelect, currentTournament }: Props
 
   return (
     <div ref={wrapperRef} className="relative">
+      {/* Overlay de selección */}
+      {selecting && (
+        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center rounded-lg bg-background/80 backdrop-blur-sm">
+          <Loader2 className="h-8 w-8 animate-spin text-primary mb-2" />
+          <p className="text-sm font-medium text-foreground">Guardando torneo seleccionado...</p>
+          <p className="text-xs text-muted-foreground">No cierres ni recargues la página</p>
+        </div>
+      )}
+
       <div className="relative">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <input
           ref={inputRef}
           type="text"
           value={query}
+          disabled={selecting}
           onChange={(e) => {
             setQuery(e.target.value);
             setOpen(true);
           }}
           onFocus={() => setOpen(true)}
           placeholder="Buscar torneo... (ej: Chile, Copa, Mundial)"
-          className="w-full rounded-lg border border-input bg-background py-2.5 pl-10 pr-10 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="w-full rounded-lg border border-input bg-background py-2.5 pl-10 pr-10 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
         />
-        {loading && (
+        {(loading || selecting) && (
           <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
         )}
       </div>
@@ -149,12 +161,13 @@ export function TournamentSearch({ pollaId, onSelect, currentTournament }: Props
             <button
               key={t.query}
               type="button"
+              disabled={selecting}
               onClick={() => {
                 setQuery(t.label);
                 search(t.query);
                 setOpen(true);
               }}
-              className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/40 px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+              className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/40 px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <Star className="h-3 w-3" />
               {t.label}
@@ -162,8 +175,8 @@ export function TournamentSearch({ pollaId, onSelect, currentTournament }: Props
           ))}
       </div>
 
-      {open && (results.length > 0 || (query.length >= 3 && !loading)) && (
-        <div className="absolute z-50 mt-1 w-full max-h-80 overflow-auto rounded-lg border border-border bg-popover shadow-lg">
+      {open && !selecting && (results.length > 0 || (query.length >= 3 && !loading)) && (
+        <div className="absolute z-40 mt-1 w-full max-h-80 overflow-auto rounded-lg border border-border bg-popover shadow-lg">
           {results.length === 0 && query.length >= 3 && !loading ? (
             <div className="px-4 py-3 text-sm text-muted-foreground">No se encontraron torneos</div>
           ) : (
