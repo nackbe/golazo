@@ -172,11 +172,11 @@ export default async function PrediccionPage({ params }: Props) {
         </div>
 
         <div className="flex items-center justify-center gap-2">
-          <div className={`flex flex-col items-center gap-1 text-center w-[110px] ${!isOpen && match.home_goals !== null && match.away_goals !== null && (match.home_goals > match.away_goals) ? 'text-green-700' : ''}`}>
+          <div className={`flex flex-col items-center gap-1 text-center w-[110px] min-w-0 ${!isOpen && match.home_goals !== null && match.away_goals !== null && (match.home_goals > match.away_goals) ? 'text-green-700' : ''}`}>
             {match.home_team?.logo_url && (
               <img src={match.home_team.logo_url} alt="" className="h-12 w-12 object-contain" />
             )}
-            <span className="text-sm font-semibold leading-tight">{match.home_team?.name || 'Local'}</span>
+            <span className="text-sm font-semibold leading-tight truncate w-full overflow-hidden">{match.home_team?.name || 'Local'}</span>
           </div>
           <div className="flex flex-col items-center px-3">
             {!isOpen && match.home_goals !== null && match.away_goals !== null ? (
@@ -194,11 +194,11 @@ export default async function PrediccionPage({ params }: Props) {
               <span className="text-lg font-bold text-muted-foreground">vs</span>
             )}
           </div>
-          <div className={`flex flex-col items-center gap-1 text-center w-[110px] ${!isOpen && match.home_goals !== null && match.away_goals !== null && (match.away_goals > match.home_goals) ? 'text-green-700' : ''}`}>
+          <div className={`flex flex-col items-center gap-1 text-center w-[110px] min-w-0 ${!isOpen && match.home_goals !== null && match.away_goals !== null && (match.away_goals > match.home_goals) ? 'text-green-700' : ''}`}>
             {match.away_team?.logo_url && (
               <img src={match.away_team.logo_url} alt="" className="h-12 w-12 object-contain" />
             )}
-            <span className="text-sm font-semibold leading-tight">{match.away_team?.name || 'Visitante'}</span>
+            <span className="text-sm font-semibold leading-tight truncate w-full overflow-hidden">{match.away_team?.name || 'Visitante'}</span>
           </div>
         </div>
 

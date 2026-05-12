@@ -106,12 +106,12 @@ export default async function PollaDetailPage({ params }: Props) {
       {/* Header card */}
       <div className="rounded-2xl bg-[#0d3d1f] p-6 text-white shadow-lg">
         <div className="flex items-start justify-between gap-4">
-          <div>
+          <div className="min-w-0">
             <span className={`inline-block rounded-full px-2.5 py-0.5 text-[11px] font-semibold mb-2 ${STATUS_STYLE[polla.status] ?? 'bg-muted text-muted-foreground'}`}>
               {STATUS_LABEL[polla.status] ?? polla.status}
             </span>
-            <h1 className="text-2xl font-black leading-tight">{polla.name}</h1>
-            <p className="mt-1 text-sm text-white/60">{polla.tournaments?.name ?? 'Torneo'}</p>
+            <h1 className="text-2xl font-black leading-tight break-words">{polla.name}</h1>
+            <p className="mt-1 text-sm text-white/60 break-words">{polla.tournaments?.name ?? 'Torneo'}</p>
           </div>
           <div className="flex-shrink-0 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10">
             <Trophy className="h-7 w-7 text-white/80" />

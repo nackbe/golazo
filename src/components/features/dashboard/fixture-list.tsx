@@ -295,7 +295,7 @@ export function FixtureList({ pollaId, matches, predictions, betDeadlineMinutes,
           sessionStorage.setItem('fixtureScrollY', String(window.scrollY));
           sessionStorage.setItem('fixtureReturnUrl', window.location.pathname + window.location.search);
         }}
-        className="grid grid-cols-[1fr_auto_1fr] gap-2 items-center rounded-xl border bg-card p-3 sm:p-4 transition-colors hover:bg-accent/50 active:scale-[0.99]"
+        className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-2 items-center rounded-xl border bg-card p-3 sm:p-4 transition-colors hover:bg-accent/50 active:scale-[0.99]"
       >
         {/* Col 1: Equipo local — logo + nombre apilados */}
         <div className={`flex flex-col items-center gap-1 text-center ${homeWon ? 'text-green-700' : isDraw ? 'text-amber-700' : ''}`}>
@@ -414,8 +414,8 @@ export function FixtureList({ pollaId, matches, predictions, betDeadlineMinutes,
     <div className="space-y-4">
       {/* Nombre de polla + ayuda */}
       {pollaName && (
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold">{pollaName}</h2>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-lg font-bold truncate min-w-0">{pollaName}</h2>
           {pointSystem && (
             <div className="relative">
               <button
@@ -604,7 +604,7 @@ export function FixtureList({ pollaId, matches, predictions, betDeadlineMinutes,
 
       {/* Contador de resultados + paginación */}
       {hasMatches && (
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-xs text-muted-foreground">
             Mostrando {sorted.length} de {matches.length} partidos
             {totalCount > matches.length && !showingAll && (

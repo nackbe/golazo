@@ -135,7 +135,7 @@ export function PredictionForm({
       {(wildcardsAvailable.x2 > 0 || wildcardsAvailable.x3 > 0 || wildcard) && (
         <div className="space-y-2">
           <label className="text-sm font-medium">Comodín (opcional)</label>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {(wildcardsAvailable.x2 > 0 || wildcard === 'x2') && (
               <button
                 type="button"

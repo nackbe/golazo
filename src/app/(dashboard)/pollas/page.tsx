@@ -85,7 +85,7 @@ export default async function PollasPage() {
     <div className="space-y-6">
 
       {/* Hero */}
-      <div className="relative overflow-hidden rounded-2xl bg-[#0d3d1f] px-6 py-8 text-white shadow-lg">
+      <div className="relative overflow-hidden rounded-2xl bg-[#0d3d1f] px-4 sm:px-6 py-6 sm:py-8 text-white shadow-lg">
         <div className="relative z-10">
           <p className="text-sm font-medium text-white/60 uppercase tracking-wider mb-1">Bienvenido</p>
           <h1 className="text-3xl font-black mb-1">Mis Pollas ⚽</h1>

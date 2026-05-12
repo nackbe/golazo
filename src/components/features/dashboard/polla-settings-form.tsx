@@ -262,7 +262,7 @@ export function PollaSettingsForm({ polla }: { polla: Polla }) {
 
         <div className="flex items-start gap-4 rounded-xl border border-border p-4">
           <Toggle value={autoApprove} onChange={setAutoApprove} disabled={general.isPending} />
-          <div>
+          <div className="min-w-0">
             <p className="text-sm font-semibold">Aprobación automática</p>
             <p className="text-xs text-muted-foreground mt-0.5">
               {autoApprove ? 'Cualquiera con el código entra directamente.' : 'Vos aprobás manualmente cada solicitud.'}
@@ -273,7 +273,7 @@ export function PollaSettingsForm({ polla }: { polla: Polla }) {
 
         <div className="flex items-start gap-4 rounded-xl border border-border p-4">
           <Toggle value={adminPlays} onChange={setAdminPlays} disabled={general.isPending} />
-          <div>
+          <div className="min-w-0">
             <p className="text-sm font-semibold">El admin juega en el ranking</p>
             <p className="text-xs text-muted-foreground mt-0.5">
               {adminPlays ? 'Tus predicciones cuentan y aparecés en el ranking.' : 'No aparecés en el ranking.'}
@@ -284,7 +284,7 @@ export function PollaSettingsForm({ polla }: { polla: Polla }) {
 
         <div className="flex items-start gap-4 rounded-xl border border-border p-4">
           <Toggle value={autoRandom} onChange={setAutoRandom} disabled={general.isPending} />
-          <div>
+          <div className="min-w-0">
             <p className="text-sm font-semibold">Predicción automática para olvidadizos</p>
             <p className="text-xs text-muted-foreground mt-0.5">
               {autoRandom ? 'Si un jugador no predice, el sistema le asigna marcador aleatorio 0-10.' : 'Los jugadores que no predicen quedan sin puntos.'}
@@ -364,7 +364,7 @@ export function PollaSettingsForm({ polla }: { polla: Polla }) {
 
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 rounded-xl border border-border p-4">
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold">Comodines x2</p>
               <p className="text-xs text-muted-foreground mt-0.5">Multiplica x2 todos los puntos de un partido.</p>
             </div>
@@ -372,7 +372,7 @@ export function PollaSettingsForm({ polla }: { polla: Polla }) {
           </div>
 
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 rounded-xl border border-border p-4">
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold">Comodines x3</p>
               <p className="text-xs text-muted-foreground mt-0.5">Multiplica x3 todos los puntos de un partido.</p>
             </div>

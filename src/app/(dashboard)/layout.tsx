@@ -32,7 +32,7 @@ export default async function DashboardLayout({
         avatarUrl={profile?.avatar_url ?? null}
         email={user.email ?? ''}
       />
-      <main className="container mx-auto px-4 py-6">{children}</main>
+      <main className="container mx-auto px-4 py-6 overflow-x-hidden">{children}</main>
     </div>
   );
 }

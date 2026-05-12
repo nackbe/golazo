@@ -70,7 +70,7 @@ export function MatchPredictionsList({
                     <span className="text-[11px] text-primary/70 font-medium">Vos</span>
                   )}
                 </div>
-                <div className="flex items-center gap-2 mt-0.5">
+                <div className="flex flex-wrap items-center gap-2 mt-0.5">
                   <span className="text-sm font-mono font-bold">
                     {p.home_goals} - {p.away_goals}
                   </span>

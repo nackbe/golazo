@@ -41,12 +41,12 @@ export function PollaListFilters({ pollas }: Props) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         {/* Role filter */}
-        <div className="flex gap-1.5">
+        <div className="flex flex-wrap gap-1.5">
           {(['all', 'admin', 'jugador'] as RoleFilter[]).map((r) => (
             <button
               key={r}
               onClick={() => setRoleFilter(r)}
-              className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+              className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors whitespace-nowrap ${
                 roleFilter === r ? 'bg-primary text-white' : 'bg-muted text-muted-foreground hover:bg-accent'
               }`}
             >
@@ -57,10 +57,10 @@ export function PollaListFilters({ pollas }: Props) {
 
         {/* Status filter */}
         {availableStatuses.length > 1 && (
-          <div className="flex gap-1.5">
+          <div className="flex flex-wrap gap-1.5">
             <button
               onClick={() => setStatusFilter('all')}
-              className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+              className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors whitespace-nowrap ${
                 statusFilter === 'all' ? 'bg-slate-700 text-white' : 'bg-muted text-muted-foreground hover:bg-accent'
               }`}
             >
@@ -70,7 +70,7 @@ export function PollaListFilters({ pollas }: Props) {
               <button
                 key={s}
                 onClick={() => setStatusFilter(s as StatusFilter)}
-                className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors whitespace-nowrap ${
                   statusFilter === s ? 'bg-slate-700 text-white' : 'bg-muted text-muted-foreground hover:bg-accent'
                 }`}
               >
@@ -80,7 +80,7 @@ export function PollaListFilters({ pollas }: Props) {
           </div>
         )}
 
-        <span className="ml-auto text-xs text-muted-foreground">
+        <span className="ml-auto text-xs text-muted-foreground whitespace-nowrap">
           {filtered.length} de {pollas.length}
         </span>
       </div>
