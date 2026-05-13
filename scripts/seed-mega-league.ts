@@ -392,7 +392,7 @@ async function runSeed() {
         predHome: pred.predHome,
         predAway: pred.predAway,
         ps,
-        wildcard: pred.wildcard,
+        wildcard: pred.wildcard as 'x2' | 'x3' | null,
       });
 
       if (hasUniqueExact && pred.userId === uniqueExactUserId) {
@@ -507,7 +507,7 @@ async function runSeed() {
   // Stats del torneo
   const stats = calculateTournamentStatsFromMatches(createdMatches);
 
-  const specialResults = [];
+  const specialResults: Array<{ tournament_id: string; type: 'champion' | 'finalist' | 'third_place' | 'least_goals_against' | 'worst_team' | 'top_scorer_team'; team_id: string }> = [];
   if (championId) specialResults.push({ tournament_id: tournament.id, type: 'champion', team_id: championId });
   if (finalistId) specialResults.push({ tournament_id: tournament.id, type: 'finalist', team_id: finalistId });
   if (thirdPlaceId) specialResults.push({ tournament_id: tournament.id, type: 'third_place', team_id: thirdPlaceId });

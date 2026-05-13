@@ -48,22 +48,14 @@ export default async function PollasPage() {
   const adminAliasById = new Map((adminProfiles ?? []).map((p) => [p.id, p.alias]));
 
   // Batch lookup: match counts per tournament (total + finished)
-  const { data: matchCounts } = tournamentIds.length > 0
-    ? await supabase
-        .from('matches')
-        .select('tournament_id, status')
-        .in('tournament_id', tournamentIds)
-    : { data: [] };
-
+  // Se hace por torneo individual para evitar el límite de 1000 registros de Supabase
   const matchStatsByTournament = new Map<string, { total: number; finished: number }>();
-  for (const m of matchCounts ?? []) {
-    const tid = m.tournament_id as string;
-    const current = matchStatsByTournament.get(tid) ?? { total: 0, finished: 0 };
-    current.total++;
-    if (['FT', 'AET', 'AFT', 'PEN'].includes(m.status)) {
-      current.finished++;
-    }
-    matchStatsByTournament.set(tid, current);
+  for (const tid of tournamentIds) {
+    const [{ count: total }, { count: finished }] = await Promise.all([
+      supabase.from('matches').select('*', { count: 'exact', head: true }).eq('tournament_id', tid),
+      supabase.from('matches').select('*', { count: 'exact', head: true }).eq('tournament_id', tid).in('status', ['FT', 'AET', 'AFT', 'PEN']),
+    ]);
+    matchStatsByTournament.set(tid, { total: total || 0, finished: finished || 0 });
   }
 
   const allPollas = [
