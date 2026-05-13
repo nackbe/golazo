@@ -43,7 +43,7 @@ export function PollaCard({ polla }: Props) {
   return (
     <Link
       href={`/pollas/${polla.id}`}
-      className="group flex flex-col rounded-2xl bg-card p-5 shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5 border border-border/50"
+      className="group flex flex-col min-w-0 rounded-2xl bg-card p-5 shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5 border border-border/50"
     >
       <div className="flex-1">
         <div className="mb-3 flex items-start justify-between gap-2">

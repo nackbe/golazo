@@ -415,7 +415,7 @@ export function FixtureList({ pollaId, matches, predictions, betDeadlineMinutes,
       {/* Nombre de polla + ayuda */}
       {pollaName && (
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-lg font-bold truncate min-w-0">{pollaName}</h2>
+          <h2 className="text-lg font-bold break-words min-w-0 leading-tight">{pollaName}</h2>
           {pointSystem && (
             <div className="relative">
               <button
