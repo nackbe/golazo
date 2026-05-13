@@ -45,9 +45,11 @@ export default function RankingEvolutionChart({ data, currentUserId }: Props) {
       [alias: string]: number | string | undefined;
     }[] = [];
 
+    // Agrupar por match_id para que cada snapshot represente un partido.
+    // Si match_id es null (snapshot sin partido), usar created_at como fallback.
     const groups = new Map<string, typeof data.entries>();
     for (const entry of data.entries) {
-      const key = entry.created_at;
+      const key = entry.match_id ?? entry.created_at;
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key)!.push(entry);
     }
