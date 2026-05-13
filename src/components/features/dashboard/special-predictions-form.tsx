@@ -172,17 +172,17 @@ export function SpecialPredictionsForm({ pollaId, teams, firstMatchDate, points,
             key={pred.key}
             className={`rounded-xl border ${pred.borderColor} ${pred.bgColor} p-4 space-y-2.5 transition-shadow hover:shadow-sm`}
           >
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2.5">
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white shadow-sm">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-start gap-2.5 min-w-0">
+                <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-white shadow-sm">
                   {pred.icon}
                 </div>
-                <div>
-                  <h3 className="text-sm font-bold">{pred.label}</h3>
+                <div className="min-w-0">
+                  <h3 className="text-sm font-bold leading-tight">{pred.label}</h3>
                   <p className="text-[11px] text-muted-foreground leading-tight">{pred.description}</p>
                 </div>
               </div>
-              <span className={`text-[11px] font-bold px-2 py-1 rounded-full ${pred.badgeColor}`}>
+              <span className={`text-[11px] font-bold px-2 py-1 rounded-full flex-shrink-0 ${pred.badgeColor}`}>
                 {points[pred.key] ?? 0} pts
               </span>
             </div>

@@ -163,15 +163,15 @@ export default async function SpecialPredictionsPage({ params }: Props) {
             {existingPredictions?.map((p: any) => {
               const cfg = TYPE_CONFIG[p.type] || { label: p.type, color: 'text-gray-700', bg: 'bg-gray-50 border-gray-200' };
               return (
-                <div key={p.id} className={`flex items-center gap-3 rounded-xl border ${cfg.bg} px-4 py-3`}>
-                  <div className={`text-sm font-bold min-w-[140px] ${cfg.color}`}>{cfg.label}</div>
-                  <div className="flex items-center gap-2 flex-1">
+                <div key={p.id} className={`flex items-start gap-3 rounded-xl border ${cfg.bg} px-4 py-3`}>
+                  <div className={`text-sm font-bold min-w-0 flex-shrink-0 w-[130px] leading-tight ${cfg.color}`}>{cfg.label}</div>
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
                     {p.team?.logo_url && (
-                      <img src={p.team.logo_url} alt="" className="h-6 w-6 object-contain" />
+                      <img src={p.team.logo_url} alt="" className="h-6 w-6 object-contain flex-shrink-0" />
                     )}
-                    <span className="font-semibold text-sm">{p.team?.name || p.player_name || '—'}</span>
+                    <span className="font-semibold text-sm truncate">{p.team?.name || p.player_name || '—'}</span>
                   </div>
-                  <span className="text-xs font-bold text-muted-foreground">{points[p.type] ?? 0} pts</span>
+                  <span className="text-xs font-bold text-muted-foreground flex-shrink-0">{points[p.type] ?? 0} pts</span>
                 </div>
               );
             })}
