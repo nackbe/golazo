@@ -411,9 +411,6 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
         'Vercel-CDN-Cache-Control': 'no-store',
         'Pragma': 'no-cache',
         'Expires': '0',
-        // Debug temporal — confirma qué valor leyó del DB
-        'X-Debug-Auto-Random': String((polla as any).auto_random_prediction),
-        'X-Debug-Polla-Id': polla.id,
       },
     });
   } catch (e: any) {
