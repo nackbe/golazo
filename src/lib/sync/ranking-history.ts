@@ -21,11 +21,13 @@ export interface RankingEvolutionData {
 export async function getRankingHistory(pollaId: string): Promise<RankingEvolutionData> {
   const admin = createAdminClient();
 
-  // Traer historial + miembros + primera predicción de la polla en paralelo.
-  // El cutoff filtra entradas de matches anteriores al primer pronóstico
-  // (relevante para pollas que se unen a un torneo ya empezado: evita mostrar
-  // ranking en partidos donde nadie de la polla podía predecir aún).
-  const [historyRes, membersRes, firstPredRes] = await Promise.all([
+  // Traer historial + miembros + matches predichos en paralelo.
+  // ranking_history.created_at NO sirve para filtrar (se setea al momento del
+  // cálculo retroactivo de puntos, no a la fecha del partido). Lo correcto:
+  // solo incluir snapshots de matches para los que existió al menos una
+  // predicción en esta polla. Así, pollas creadas mid-tournament no muestran
+  // ranking en partidos previos al primer pronóstico.
+  const [historyRes, membersRes, predictedMatchesRes] = await Promise.all([
     admin
       .from('ranking_history')
       .select('user_id, match_id, position, total_points, created_at')
@@ -38,27 +40,26 @@ export async function getRankingHistory(pollaId: string): Promise<RankingEvoluti
       .eq('status', 'approved'),
     admin
       .from('predictions')
-      .select('created_at')
-      .eq('polla_id', pollaId)
-      .order('created_at', { ascending: true })
-      .limit(1)
-      .maybeSingle(),
+      .select('match_id')
+      .eq('polla_id', pollaId),
   ]);
 
   const history = historyRes.data;
   const members = membersRes.data;
-  const firstPredictionAt = firstPredRes.data?.created_at;
+  const predictedMatchIds = new Set(
+    (predictedMatchesRes.data ?? []).map((p) => p.match_id).filter(Boolean) as string[]
+  );
 
   const aliasMap = new Map(members?.map((m) => [m.user_id, m.alias]) ?? []);
 
   // Si no hubo predicciones todavía, devolver vacío.
-  if (!firstPredictionAt) {
+  if (predictedMatchIds.size === 0) {
     return { entries: [], matchLabels: {} };
   }
 
-  // Filtrar entradas previas al primer pronóstico de la polla.
+  // Filtrar entradas: solo las cuyo match_id tenga predicción en esta polla.
   const filteredHistory = (history ?? []).filter(
-    (h) => new Date(h.created_at) >= new Date(firstPredictionAt)
+    (h) => h.match_id && predictedMatchIds.has(h.match_id)
   );
 
   // Traer info de partidos para etiquetas (solo de las entradas que sobreviven al filtro)
