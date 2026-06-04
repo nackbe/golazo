@@ -47,32 +47,23 @@ export default async function PollasPage() {
 
   const adminAliasById = new Map((adminProfiles ?? []).map((p) => [p.id, p.alias]));
 
-  // Batch lookup: match counts per tournament (total + finished)
-  // Antes: 2 queries × N tournaments en loop secuencial (P95 ~6s con 10 pollas).
-  // Ahora: 2 queries totales — agregamos en JS.
+  // Batch lookup: match counts per tournament (total + finished).
+  // Antes intenté agregar en JS con 2 queries totales pero Supabase trunca
+  // a max_rows=1000 → tournaments con matches fuera del slice quedaban en 0.
+  // Solución: count por tournament en paralelo (2N queries pero ejecutadas
+  // todas a la vez vía Promise.all, ~700ms).
   const matchStatsByTournament = new Map<string, { total: number; finished: number }>();
   if (tournamentIds.length > 0) {
-    const [{ data: allMatches }, { data: finishedMatches }] = await Promise.all([
-      supabase
-        .from('matches')
-        .select('tournament_id')
-        .in('tournament_id', tournamentIds),
-      supabase
-        .from('matches')
-        .select('tournament_id')
-        .in('tournament_id', tournamentIds)
-        .in('status', ['FT', 'AET', 'AFT', 'PEN']),
-    ]);
-    for (const tid of tournamentIds) {
-      matchStatsByTournament.set(tid, { total: 0, finished: 0 });
-    }
-    for (const m of allMatches || []) {
-      const s = matchStatsByTournament.get(m.tournament_id);
-      if (s) s.total++;
-    }
-    for (const m of finishedMatches || []) {
-      const s = matchStatsByTournament.get(m.tournament_id);
-      if (s) s.finished++;
+    const results = await Promise.all(
+      tournamentIds.flatMap((tid) => [
+        supabase.from('matches').select('*', { count: 'exact', head: true }).eq('tournament_id', tid),
+        supabase.from('matches').select('*', { count: 'exact', head: true }).eq('tournament_id', tid).in('status', ['FT', 'AET', 'AFT', 'PEN']),
+      ])
+    );
+    for (let i = 0; i < tournamentIds.length; i++) {
+      const total = results[i * 2].count || 0;
+      const finished = results[i * 2 + 1].count || 0;
+      matchStatsByTournament.set(tournamentIds[i], { total, finished });
     }
   }
 
