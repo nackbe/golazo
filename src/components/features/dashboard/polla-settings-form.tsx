@@ -115,9 +115,9 @@ function Block({
 }) {
   return (
     <form onSubmit={onSubmit} className="rounded-2xl bg-card border border-border/50 shadow-sm overflow-hidden">
-      <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-primary/5">
         <div className="flex items-center gap-2">
-          <h2 className="font-bold text-base">{title}</h2>
+          <h2 className="font-black text-lg tracking-tight text-foreground">{title}</h2>
           {locked && (
             <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
               <Lock className="h-2.5 w-2.5" />
@@ -310,7 +310,7 @@ export function PollaSettingsForm({ polla }: { polla: Polla }) {
         )}
 
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Predicciones de partido</p>
+          <p className="text-sm font-black uppercase tracking-wider text-primary border-l-4 border-primary pl-2 mb-3">Predicciones de partido</p>
           <div className="space-y-3">
             {POINT_FIELDS.map(f => (
               <div key={f.key} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4">
@@ -325,7 +325,7 @@ export function PollaSettingsForm({ polla }: { polla: Polla }) {
         </div>
 
         <div className="border-t border-border pt-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Predicciones especiales de torneo</p>
+          <p className="text-sm font-black uppercase tracking-wider text-primary border-l-4 border-primary pl-2 mb-3">Predicciones especiales de torneo</p>
           <div className="space-y-3">
             {SPECIAL_FIELDS.map(f => (
               <div key={f.key} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4">
@@ -339,11 +339,6 @@ export function PollaSettingsForm({ polla }: { polla: Polla }) {
           </div>
         </div>
 
-        {ps('unique_exact_bonus', 0) > 0 && (
-          <div className="rounded-xl bg-primary/5 border border-primary/20 px-4 py-3 text-xs text-muted-foreground">
-            Si sos el <strong className="text-foreground">único</strong> que acierta el marcador exacto, tus puntos de exacto se multiplican por <strong className="text-foreground">{ps('unique_exact_bonus', 0)}×</strong>.
-          </div>
-        )}
       </Block>
 
       {/* Comodines */}
