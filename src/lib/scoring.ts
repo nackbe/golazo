@@ -51,6 +51,14 @@ interface ScorePredictionInput {
   predAway: number;
   ps: PointSystem;
   wildcard?: 'x2' | 'x3' | null;
+  /**
+   * Multiplicador "único exacto". Default 1 (sin bonus).
+   * Si la predicción es exacta y este valor es > 1, suma un item bonus de
+   * exact_score * (uniqueExactMultiplier - 1).
+   * Solo aplica cuando la predicción es exacta — caller decide si corresponde
+   * (típicamente: exactamente 1 jugador acertó marcador exacto).
+   */
+  uniqueExactMultiplier?: number;
 }
 
 export interface PointBreakdownItem {
@@ -77,7 +85,16 @@ const BREAKDOWN_LABELS: Record<string, string> = {
 
 /**
  * Calcula el desglose de puntos de una predicción (sin side effects).
- * El bonus de "único y exacto" NO se incluye aquí — se aplica externamente.
+ *
+ * Regla: si la predicción es exacta, SOLO suma exact_score (no acumula con
+ * las otras categorías que también acertaría por consecuencia). Si no es
+ * exacta, suma todas las categorías matched (correct_result, home_goals,
+ * away_goals, goal_difference, total_goals).
+ *
+ * Bonus "único exacto": si uniqueExactMultiplier > 1 y la predicción es exacta,
+ * agrega un item adicional con exact_score * (uniqueExactMultiplier - 1).
+ *
+ * Comodín x2/x3 multiplica el total base (incluyendo bonus único).
  */
 export function scoreMatchPredictionWithBreakdown({
   realHome,
@@ -86,11 +103,13 @@ export function scoreMatchPredictionWithBreakdown({
   predAway,
   ps,
   wildcard,
+  uniqueExactMultiplier,
 }: ScorePredictionInput): PointBreakdown {
   const realDiff = realHome - realAway;
   const realTotal = realHome + realAway;
   const predDiff = predHome - predAway;
   const predTotal = predHome + predAway;
+  const exact = realHome === predHome && realAway === predAway;
 
   const items: PointBreakdownItem[] = [];
 
@@ -100,12 +119,24 @@ export function scoreMatchPredictionWithBreakdown({
     }
   }
 
-  add('correct_result', Math.sign(realDiff) === Math.sign(predDiff), ps.correct_result);
-  add('home_goals', realHome === predHome, ps.home_goals);
-  add('away_goals', realAway === predAway, ps.away_goals);
-  add('exact_score', realHome === predHome && realAway === predAway, ps.exact_score);
-  add('goal_difference', Math.abs(realDiff) === Math.abs(predDiff), ps.goal_difference);
-  add('total_goals', realTotal === predTotal, ps.total_goals);
+  if (exact) {
+    add('exact_score', true, ps.exact_score);
+    const uniqMult = uniqueExactMultiplier ?? 1;
+    if (uniqMult > 1 && ps.exact_score > 0) {
+      const bonus = ps.exact_score * (uniqMult - 1);
+      items.push({
+        key: 'unique_exact_bonus',
+        label: `Único exacto (×${uniqMult})`,
+        points: bonus,
+      });
+    }
+  } else {
+    add('correct_result', Math.sign(realDiff) === Math.sign(predDiff), ps.correct_result);
+    add('home_goals', realHome === predHome, ps.home_goals);
+    add('away_goals', realAway === predAway, ps.away_goals);
+    add('goal_difference', Math.abs(realDiff) === Math.abs(predDiff), ps.goal_difference);
+    add('total_goals', realTotal === predTotal, ps.total_goals);
+  }
 
   const baseTotal = items.reduce((sum, i) => sum + i.points, 0);
   let multiplier = 1;

@@ -218,14 +218,13 @@ async function runScenario1_BasicPoints(userA: string, userB: string) {
   const pointsA = await getMatchPoints(pollaId, userA, matchId);
   const pointsB = await getMatchPoints(pollaId, userB, matchId);
 
-  // 2-1: correct_result(1) + home_goals(1) + away_goals(1) + exact_score(3) + goal_difference(1) + total_goals(1) = 8
-  assert(pointsA === 8, 'UserA: marcador exacto = 8 puntos', `got ${pointsA}`);
-  // 0-0 vs 2-1: away_goals match (0=1? no. home_goals: 0≠2, away_goals: 0≠1) → solo correct_result? No (predijo empate, gana local) → 0
-  // Actually: result wrong (predijo draw, real home win) → correct_result=0; home_goals: pred=0, real=2 → 0; away_goals: pred=0, real=1 → 0 → total 0
+  // Nueva regla: exacto = solo exact_score(3 default), no acumula
+  assert(pointsA === 3, 'UserA: marcador exacto = 3 puntos (solo exact_score)', `got ${pointsA}`);
+  // 0-0 vs 2-1: predijo empate, gana local → resultado incorrecto, ningún match → 0
   assert(pointsB === 0, 'UserB: predicción incorrecta = 0 puntos', `got ${pointsB}`);
 
   const totalA = await getMemberPoints(pollaId, userA);
-  assert(totalA === 8, 'UserA total_points actualizado = 8', `got ${totalA}`);
+  assert(totalA === 3, 'UserA total_points actualizado = 3', `got ${totalA}`);
 
   const rh = await getRankingHistory(pollaId, userA);
   assert(rh !== null, 'ranking_history registrado para UserA');
@@ -246,10 +245,10 @@ async function runScenario2_Idempotency(pollaId: string, matchId: string, userA:
   await calculateMatchPoints(matchId);
 
   const pointsA = await getMatchPoints(pollaId, userA, matchId);
-  assert(pointsA === 8, 'Puntos de UserA siguen siendo 8 después de recalcular 2 veces', `got ${pointsA}`);
+  assert(pointsA === 3, 'Puntos de UserA siguen siendo 3 después de recalcular 2 veces', `got ${pointsA}`);
 
   const totalA = await getMemberPoints(pollaId, userA);
-  assert(totalA === 8, 'total_points no se duplicó', `got ${totalA}`);
+  assert(totalA === 3, 'total_points no se duplicó', `got ${totalA}`);
 }
 
 async function runScenario3_Wildcard(userA: string) {
@@ -266,7 +265,7 @@ async function runScenario3_Wildcard(userA: string) {
   await calculateMatchPoints(matchId);
 
   const points = await getMatchPoints(pollaId, userA, matchId);
-  assert(points === 16, 'Exacto con x2 = 16 puntos (8 × 2)', `got ${points}`);
+  assert(points === 6, 'Exacto con x2 = 6 puntos (exact_score 3 × 2)', `got ${points}`);
 }
 
 async function runScenario4_CronFlow(userA: string) {
@@ -291,8 +290,8 @@ async function runScenario4_CronFlow(userA: string) {
   await calculateMatchPoints(matchId);
 
   const points = await getMatchPoints(pollaId, userA, matchId);
-  // resultado correcto (home win = home win), exacto (2-1=2-1) → 8 pts
-  assert(points === 8, 'Cron flow: puntos calculados correctamente después de FT', `got ${points}`);
+  // Nueva regla: exacto = solo exact_score(3)
+  assert(points === 3, 'Cron flow: puntos calculados correctamente después de FT', `got ${points}`);
 
   const match = await admin.from('matches').select('points_calculated').eq('id', matchId).single();
   assert(match.data?.points_calculated === true, 'points_calculated = true después del cron flow');
@@ -312,8 +311,8 @@ async function runScenario5_X3Wildcard(userA: string) {
   await calculateMatchPoints(matchId);
 
   const points = await getMatchPoints(pollaId, userA, matchId);
-  // 1-0: correct_result(1)+home(1)+away(1)+exact(3)+diff(1)+total(1)=8 × 3 = 24
-  assert(points === 24, 'Exacto con x3 = 24 puntos (8 × 3)', `got ${points}`);
+  // Nueva regla: exacto = exact_score(3) × 3 = 9
+  assert(points === 9, 'Exacto con x3 = 9 puntos (exact_score 3 × 3)', `got ${points}`);
 }
 
 async function runScenario6_WildcardOnWrong(userA: string) {
@@ -349,7 +348,7 @@ async function runScenario7_CustomPointSystem(userA: string) {
   const matchCorrect = await createSmokeMatch(tournamentId, { status: 'NS', scheduledAt: '2024-10-02T18:00:00Z' });
   const matchWrong = await createSmokeMatch(tournamentId, { status: 'NS', scheduledAt: '2024-10-03T18:00:00Z' });
 
-  // Exacto 2-1 → correct_result(2) + exact_score(10) = 12
+  // Nueva regla: exacto = solo exact_score(10), no acumula correct_result
   await addPrediction(pollaId, userA, matchExact, 2, 1);
   // Correcto pero no exacto: predice 1-0 (home win), real 3-0 (home win) → correct_result(2) = 2
   await addPrediction(pollaId, userA, matchCorrect, 1, 0);
@@ -369,10 +368,10 @@ async function runScenario7_CustomPointSystem(userA: string) {
   const pWrong = await getMatchPoints(pollaId, userA, matchWrong);
   const total = await getMemberPoints(pollaId, userA);
 
-  assert(pExact === 12, 'Custom: exacto 2-1 = 12 pts (correct_result 2 + exact_score 10)', `got ${pExact}`);
+  assert(pExact === 10, 'Custom: exacto 2-1 = 10 pts (solo exact_score)', `got ${pExact}`);
   assert(pCorrect === 2, 'Custom: correcto no exacto = 2 pts (solo correct_result)', `got ${pCorrect}`);
   assert(pWrong === 0, 'Custom: incorrecto = 0 pts', `got ${pWrong}`);
-  assert(total === 14, 'Custom: total = 14 pts (12+2+0)', `got ${total}`);
+  assert(total === 12, 'Custom: total = 12 pts (10+2+0)', `got ${total}`);
 }
 
 // ─── main ────────────────────────────────────────────────────────────────────

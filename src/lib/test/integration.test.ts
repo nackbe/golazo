@@ -40,7 +40,7 @@ describe('Integration: point calculation flow', () => {
 
     const admin = createAdminClient();
 
-    // match_points should have 8 points (default system: 1+1+1+3+1+1)
+    // Nueva regla: exacto = solo exact_score (default 3 pts), sin acumulación.
     const { data: mp } = await admin
       .from('match_points')
       .select('points')
@@ -48,7 +48,7 @@ describe('Integration: point calculation flow', () => {
       .eq('user_id', userId)
       .eq('match_id', matchId)
       .single();
-    expect(mp?.points).toBe(8);
+    expect(mp?.points).toBe(3);
 
     // total_points updated
     const { data: member } = await admin
@@ -57,7 +57,7 @@ describe('Integration: point calculation flow', () => {
       .eq('polla_id', pollaId)
       .eq('user_id', userId)
       .single();
-    expect(member?.total_points).toBe(8);
+    expect(member?.total_points).toBe(3);
 
     // ranking_history snapshot recorded
     const { data: rh } = await admin
@@ -67,7 +67,7 @@ describe('Integration: point calculation flow', () => {
       .eq('user_id', userId)
       .single();
     expect(rh?.position).toBe(1);
-    expect(rh?.total_points).toBe(8);
+    expect(rh?.total_points).toBe(3);
 
     // streaks updated (requires migration 0026 applied)
     const { data: streak } = await admin
@@ -161,7 +161,7 @@ describe('Integration: wildcards and custom point systems', () => {
       .from('match_points').select('points')
       .eq('polla_id', pollaId).eq('user_id', userId).eq('match_id', matches.matchIds[0])
       .single();
-    expect(mp?.points).toBe(16); // 8 pts exacto × 2
+    expect(mp?.points).toBe(6); // exact_score(3) × 2
   });
 
   it('x3 wildcard triples points on exact prediction', async () => {
@@ -179,8 +179,8 @@ describe('Integration: wildcards and custom point systems', () => {
       .from('match_points').select('points')
       .eq('polla_id', pollaId).eq('user_id', userId).eq('match_id', matches.matchIds[0])
       .single();
-    // 1-0: correct_result(1)+home_goals(1)+away_goals(1)+exact_score(3)+goal_diff(1)+total(1)=8 × 3 = 24
-    expect(mp?.points).toBe(24);
+    // Nueva regla: exacto = solo exact_score(3) × 3 = 9
+    expect(mp?.points).toBe(9);
   });
 
   it('x2 wildcard on wrong prediction still yields 0 points', async () => {
@@ -245,7 +245,7 @@ describe('Integration: custom point system', () => {
     await cleanupAllTestData();
   });
 
-  it('exact score with custom system: correct_result(2) + exact_score(10) + goal_diff(1) = 13', async () => {
+  it('exact score with custom system: solo exact_score(10) — no acumula', async () => {
     const matches = await createTestMatches(tournamentId, [
       { home_goals: 2, away_goals: 1, status: 'FT', scheduled_at: '2024-08-01T18:00:00Z' },
     ]);
@@ -260,8 +260,8 @@ describe('Integration: custom point system', () => {
       .from('match_points').select('points')
       .eq('polla_id', pollaId).eq('user_id', userId).eq('match_id', matches.matchIds[0])
       .single();
-    // correct_result(2) + home_goals(0) + away_goals(0) + exact_score(10) + goal_diff(1) + total(0) = 13
-    expect(mp?.points).toBe(13);
+    // Nueva regla: exacto = solo exact_score(10)
+    expect(mp?.points).toBe(10);
   });
 
   it('correct result only with custom system: just correct_result(2)', async () => {
@@ -282,7 +282,7 @@ describe('Integration: custom point system', () => {
     expect(mp?.points).toBe(2); // solo correct_result
   });
 
-  it('x3 wildcard on exact with custom system = 13 × 3 = 39', async () => {
+  it('x3 wildcard on exact with custom system = exact_score(10) × 3 = 30', async () => {
     const matches = await createTestMatches(tournamentId, [
       { home_goals: 0, away_goals: 0, status: 'FT', scheduled_at: '2024-08-03T18:00:00Z' },
     ]);
@@ -297,8 +297,8 @@ describe('Integration: custom point system', () => {
       .from('match_points').select('points')
       .eq('polla_id', pollaId).eq('user_id', userId).eq('match_id', matches.matchIds[0])
       .single();
-    // 0-0: correct_result(2)+exact_score(10)+goal_diff(1, diff=0=0) = 13 × 3 = 39
-    expect(mp?.points).toBe(39);
+    // Nueva regla: exacto = solo exact_score(10) × 3 = 30
+    expect(mp?.points).toBe(30);
   });
 });
 
@@ -343,14 +343,14 @@ describe('Integration: batch calculation', () => {
       expect(match?.points_calculated).toBe(true);
     }
 
-    // Total should be 16 (8 + 8)
+    // Nueva regla: exacto = solo exact_score(3). Total = 3 + 3 = 6.
     const { data: member } = await admin
       .from('polla_members')
       .select('total_points')
       .eq('polla_id', pollaId)
       .eq('user_id', userId)
       .single();
-    expect(member?.total_points).toBe(16);
+    expect(member?.total_points).toBe(6);
   });
 });
 

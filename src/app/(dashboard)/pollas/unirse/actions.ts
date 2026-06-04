@@ -29,19 +29,37 @@ export async function joinPolla(formData: FormData) {
     return { error: 'No existe una polla con ese código.' };
   }
 
-  // Verificar si ya es miembro
-  const { data: existingMember } = await supabase
+  // Verificar si ya es miembro — admin client porque RLS oculta filas pending/rejected
+  // del propio usuario (is_polla_member requiere status='approved').
+  const { data: existingMember } = await admin
     .from('polla_members')
     .select('id, status')
     .eq('polla_id', pollas.id)
     .eq('user_id', user.id)
-    .single();
+    .maybeSingle();
 
   if (existingMember) {
     if (existingMember.status === 'approved') {
       redirect(`/pollas/${pollas.id}`);
     }
-    return { error: 'Ya enviaste una solicitud para unirte a esta polla. Esperá la aprobación del admin.' };
+    if (existingMember.status === 'pending') {
+      return { error: 'Ya enviaste una solicitud para unirte a esta polla. Esperá la aprobación del admin.' };
+    }
+    // status === 'rejected' — permitir re-pedir actualizando a pending
+    const newStatus = pollas.auto_approve ? 'approved' : 'pending';
+    const { error: updateError } = await admin
+      .from('polla_members')
+      .update({ status: newStatus })
+      .eq('id', existingMember.id);
+
+    if (updateError) {
+      return { error: updateError.message };
+    }
+
+    if (newStatus === 'approved') {
+      redirect(`/pollas/${pollas.id}`);
+    }
+    return { success: true, message: 'Solicitud reenviada. El admin debe aprobarte.' };
   }
 
   // Obtener alias del perfil

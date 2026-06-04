@@ -96,21 +96,36 @@ describe('scoreMatchPrediction', () => {
     expect(result).toBe(ps.away_goals);
   });
 
-  it('awards exact_score', () => {
+  it('awards ONLY exact_score on exact prediction (no acumulación con otras categorías)', () => {
     const result = scoreMatchPrediction({
       realHome: 2, realAway: 1,
       predHome: 2, predAway: 1,
       ps,
     });
-    // correct_result + home_goals + away_goals + exact_score + goal_difference + total_goals
-    expect(result).toBe(
-      ps.correct_result +
-        ps.home_goals +
-        ps.away_goals +
-        ps.exact_score +
-        ps.goal_difference +
-        ps.total_goals
-    );
+    // Nueva regla: exacto = solo exact_score, no se acumulan correct_result/home_goals/etc.
+    expect(result).toBe(ps.exact_score);
+  });
+
+  it('awards exact_score × unique_exact_bonus when uniqueExactMultiplier > 1', () => {
+    const psWithBonus: PointSystem = { ...ps, unique_exact_bonus: 2 };
+    const result = scoreMatchPrediction({
+      realHome: 2, realAway: 1,
+      predHome: 2, predAway: 1,
+      ps: psWithBonus,
+      uniqueExactMultiplier: 2,
+    });
+    expect(result).toBe(ps.exact_score * 2);
+  });
+
+  it('ignores uniqueExactMultiplier when prediction is not exact', () => {
+    const psWithBonus: PointSystem = { ...ps, unique_exact_bonus: 3 };
+    const result = scoreMatchPrediction({
+      realHome: 2, realAway: 1,
+      predHome: 4, predAway: 0,
+      ps: psWithBonus,
+      uniqueExactMultiplier: 3,
+    });
+    expect(result).toBe(ps.correct_result);
   });
 
   it('awards goal_difference without exact score', () => {
@@ -161,14 +176,8 @@ describe('scoreMatchPrediction', () => {
       ps,
       wildcard: 'x2',
     });
-    const base =
-      ps.correct_result +
-      ps.home_goals +
-      ps.away_goals +
-      ps.exact_score +
-      ps.goal_difference +
-      ps.total_goals;
-    expect(result).toBe(base * 2);
+    // exacto = solo exact_score, multiplicado por x2
+    expect(result).toBe(ps.exact_score * 2);
   });
 
   it('triples points with x3 wildcard when points > 0', () => {
@@ -178,14 +187,19 @@ describe('scoreMatchPrediction', () => {
       ps,
       wildcard: 'x3',
     });
-    const base =
-      ps.correct_result +
-      ps.home_goals +
-      ps.away_goals +
-      ps.exact_score +
-      ps.goal_difference +
-      ps.total_goals;
-    expect(result).toBe(base * 3);
+    expect(result).toBe(ps.exact_score * 3);
+  });
+
+  it('stacks unique exact bonus and wildcard: exact_score × unique × wildcard', () => {
+    const psWithBonus: PointSystem = { ...ps, unique_exact_bonus: 2 };
+    const result = scoreMatchPrediction({
+      realHome: 2, realAway: 1,
+      predHome: 2, predAway: 1,
+      ps: psWithBonus,
+      wildcard: 'x3',
+      uniqueExactMultiplier: 2,
+    });
+    expect(result).toBe(ps.exact_score * 2 * 3);
   });
 
   it('does not multiply 0 points with wildcard', () => {
@@ -213,7 +227,8 @@ describe('scoreMatchPrediction', () => {
       predHome: 2, predAway: 1,
       ps: custom,
     });
-    expect(result).toBe(3 + 2 + 2 + 10 + 3 + 2);
+    // Nueva regla: exacto = solo exact_score
+    expect(result).toBe(custom.exact_score);
   });
 
   it('returns 0 when predicted exact reverse result', () => {

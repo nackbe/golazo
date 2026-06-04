@@ -231,6 +231,15 @@ export default async function PrediccionPage({ params }: Props) {
       {/* Resultado de la predicción con desglose */}
       {isFinished && prediction && match.home_goals !== null && match.away_goals !== null && (() => {
         const ps = getPointSystem(polla.point_system);
+        const exact = prediction.home_goals === match.home_goals && prediction.away_goals === match.away_goals;
+
+        // Detectar "único y exacto" — solo aplica si esta predicción es exacta
+        // y es la única predicción exacta entre todos los miembros.
+        const exactCount = allPredictions.filter(
+          p => p.home_goals === match.home_goals && p.away_goals === match.away_goals
+        ).length;
+        const isUniqueExact = exact && ps.unique_exact_bonus > 0 && exactCount === 1;
+
         const breakdown = scoreMatchPredictionWithBreakdown({
           realHome: match.home_goals,
           realAway: match.away_goals,
@@ -238,17 +247,9 @@ export default async function PrediccionPage({ params }: Props) {
           predAway: prediction.away_goals,
           ps,
           wildcard: prediction.wildcard_used as 'x2' | 'x3' | null,
+          uniqueExactMultiplier: isUniqueExact ? ps.unique_exact_bonus : 1,
         });
 
-        // Bonus "único y exacto"
-        const exactCount = allPredictions.filter(
-          p => p.home_goals === match.home_goals && p.away_goals === match.away_goals
-        ).length;
-        const hasUniqueExact = ps.unique_exact_bonus > 0 && exactCount === 1 && (prediction.home_goals === match.home_goals && prediction.away_goals === match.away_goals);
-        const uniqueBonus = hasUniqueExact ? ps.exact_score * (ps.unique_exact_bonus - 1) : 0;
-        const finalTotal = breakdown.total + uniqueBonus;
-
-        const exact = prediction.home_goals === match.home_goals && prediction.away_goals === match.away_goals;
         const statusLabel = exact ? '🎯 ¡Marcador exacto!' : (myPoints ?? 0) > 0 ? '✓ Acertaste' : '✗ No acertaste';
         const statusColor = exact ? 'bg-emerald-500 text-white' : (myPoints ?? 0) > 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-700';
 
@@ -267,12 +268,6 @@ export default async function PrediccionPage({ params }: Props) {
                     <span className="font-bold">+{item.points} pts</span>
                   </div>
                 ))}
-                {hasUniqueExact && (
-                  <div className="flex justify-between text-xs text-amber-700">
-                    <span>🎯 Único exacto (×{ps.unique_exact_bonus})</span>
-                    <span className="font-bold">+{uniqueBonus} pts</span>
-                  </div>
-                )}
                 {breakdown.multiplier > 1 && (
                   <div className="flex justify-between text-xs font-semibold border-t border-current/20 pt-1 mt-1">
                     <span>Comodín {prediction.wildcard_used?.toUpperCase()}</span>
@@ -281,7 +276,7 @@ export default async function PrediccionPage({ params }: Props) {
                 )}
                 <div className="flex justify-between text-sm font-black border-t border-current/30 pt-1 mt-1">
                   <span>Total</span>
-                  <span>+{finalTotal} pts</span>
+                  <span>+{breakdown.total} pts</span>
                 </div>
               </div>
             )}

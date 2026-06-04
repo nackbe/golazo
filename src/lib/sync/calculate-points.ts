@@ -212,21 +212,16 @@ export async function calculateMatchPoints(matchId: string) {
     const uniqueExactUserId = hasUniqueExact ? exactPredictions[0].user_id : null;
 
     for (const pred of predictions) {
-      let points = scoreMatchPrediction({
+      const isUniqueExactWinner = hasUniqueExact && pred.user_id === uniqueExactUserId;
+      const finalPoints = scoreMatchPrediction({
         realHome,
         realAway,
         predHome: pred.home_goals,
         predAway: pred.away_goals,
         ps,
         wildcard: pred.wildcard_used as 'x2' | 'x3' | null,
+        uniqueExactMultiplier: isUniqueExactWinner ? ps.unique_exact_bonus : 1,
       });
-
-      // Bonus: marcador único y exacto
-      if (hasUniqueExact && pred.user_id === uniqueExactUserId) {
-        points += ps.exact_score * (ps.unique_exact_bonus - 1);
-      }
-
-      const finalPoints = points;
 
       // 4. Upsert en match_points (idempotente)
       const { error: upsertError } = await admin
@@ -484,20 +479,17 @@ export async function batchCalculateMatchPoints(pollaId: string): Promise<BatchR
 
     const realHome = match.home_goals;
     const realAway = match.away_goals;
-    let points = scoreMatchPrediction({
+    const bonusUserId = uniqueExactBonusByMatch.get(pred.match_id);
+    const isUniqueExactWinner = bonusUserId === pred.user_id;
+    const points = scoreMatchPrediction({
       realHome,
       realAway,
       predHome: pred.home_goals,
       predAway: pred.away_goals,
       ps,
       wildcard: pred.wildcard_used as 'x2' | 'x3' | null,
+      uniqueExactMultiplier: isUniqueExactWinner ? ps.unique_exact_bonus : 1,
     });
-
-    // Bonus: marcador único y exacto
-    const bonusUserId = uniqueExactBonusByMatch.get(pred.match_id);
-    if (bonusUserId === pred.user_id) {
-      points += ps.exact_score * (ps.unique_exact_bonus - 1);
-    }
 
     matchPointsToUpsert.push({
       polla_id: pollaId,
