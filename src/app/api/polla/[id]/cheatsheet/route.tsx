@@ -252,6 +252,17 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
                   </div>
                 )}
               </div>
+              <div
+                style={{
+                  display: 'flex',
+                  fontSize: '20px',
+                  opacity: 0.85,
+                  lineHeight: 1.4,
+                  marginTop: '14px',
+                }}
+              >
+                Podés usarlos en los partidos que elijas para multiplicar los puntos que ganes en esos partidos. ¡Usalos cuando estés muyyy seguro!
+              </div>
             </div>
           )}
 
