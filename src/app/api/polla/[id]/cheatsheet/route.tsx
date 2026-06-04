@@ -76,7 +76,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     const uniqueBonus = ps.unique_exact_bonus;
     const autoRandom = (polla as any).auto_random_prediction === true;
 
-    return new ImageResponse(
+    const img = new ImageResponse(
       (
         <div
           style={{
@@ -390,21 +390,24 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
           </div>
         </div>
       ),
-      {
-        width: 1080,
-        height: 1920,
-        headers: {
-          // no-store impide que browser/CDN cacheen la PNG. must-revalidate
-          // no era suficiente: cambios de config (ej. desactivar auto_random)
-          // seguían mostrando versión vieja. Cuando todo estable subir a 300.
-          'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
-          'Pragma': 'no-cache',
-          'Expires': '0',
-          'CDN-Cache-Control': 'no-store',
-          'Vercel-CDN-Cache-Control': 'no-store',
-        },
-      }
+      { width: 1080, height: 1920 }
     );
+
+    // Wrap en Response manual para tener control TOTAL de los headers.
+    // ImageResponse + Vercel agregan 'public, immutable, max-age=31536000'
+    // automáticamente, lo que ignora los no-store que pasamos en options.headers.
+    const buf = await img.arrayBuffer();
+    return new Response(buf, {
+      status: 200,
+      headers: {
+        'Content-Type': 'image/png',
+        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        'CDN-Cache-Control': 'no-store',
+        'Vercel-CDN-Cache-Control': 'no-store',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+      },
+    });
   } catch (e: any) {
     console.error('Cheatsheet render error:', e);
     return new Response(`Render error: ${e?.message ?? String(e)}`, { status: 500 });
