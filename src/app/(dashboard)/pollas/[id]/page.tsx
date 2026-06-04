@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Settings, Hash, Trophy, CalendarDays, Sparkles } from 'lucide-react';
+import { ArrowLeft, Settings, Hash, Trophy, CalendarDays, Sparkles, Share2 } from 'lucide-react';
 import { CopyInviteLink } from '@/components/features/dashboard/copy-invite-link';
 import RankingEvolutionChart from '@/components/features/dashboard/ranking-evolution-chart';
 import { StreakIndicator } from '@/components/features/dashboard/streak-indicator';
@@ -146,6 +146,15 @@ export default async function PollaDetailPage({ params }: Props) {
             <Sparkles className="h-3 w-3" />
             Predicciones especiales del torneo
           </Link>
+          {polla.status !== 'draft' && (
+            <Link
+              href={`/pollas/${params.id}/cheatsheet`}
+              className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-white/85 hover:bg-white/20 transition-colors ml-2"
+            >
+              <Share2 className="h-3 w-3" />
+              Compartir reglas
+            </Link>
+          )}
         </div>
       </div>
 
