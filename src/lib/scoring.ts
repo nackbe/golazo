@@ -134,7 +134,10 @@ export function scoreMatchPredictionWithBreakdown({
     add('correct_result', Math.sign(realDiff) === Math.sign(predDiff), ps.correct_result);
     add('home_goals', realHome === predHome, ps.home_goals);
     add('away_goals', realAway === predAway, ps.away_goals);
-    add('goal_difference', Math.abs(realDiff) === Math.abs(predDiff), ps.goal_difference);
+    // Strict directional: requiere mismo signo + misma magnitud. Sin esto,
+    // predecir 0-3 cuando el real fue 3-0 cobraba el bonus aunque acertaste
+    // cero. Ahora goal_difference es bonus encima de leer bien el partido.
+    add('goal_difference', realDiff === predDiff, ps.goal_difference);
     add('total_goals', realTotal === predTotal, ps.total_goals);
   }
 

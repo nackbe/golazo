@@ -330,8 +330,9 @@ async function runScenario6_WildcardOnWrong(userA: string) {
   await calculateMatchPoints(matchId);
 
   const points = await getMatchPoints(pollaId, userA, matchId);
-  // correct_result: no, home/away: no, but goal_diff abs (|−2|=|+2|=2) + total_goals (2=2) → 2pt × 2 = 4
-  assert(points === 4, 'Comodín x2: goal_diff(abs)+total_goals = 2pts × 2 = 4pts', `got ${points}`);
+  // Strict directional: pred diff=-2, real diff=+2 → goal_diff NO paga (signo distinto).
+  // Solo total_goals (0+2=2+0=2) → 1pt × x2 = 2pts.
+  assert(points === 2, 'Comodín x2 con dirección invertida: solo total_goals × 2 = 2pts', `got ${points}`);
 }
 
 async function runScenario7_CustomPointSystem(userA: string) {

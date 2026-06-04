@@ -76,17 +76,19 @@ describe('scoreMatchPrediction', () => {
     expect(result).toBe(ps.home_goals);
   });
 
-  it('awards away_goals + goal_difference (abs) when only away score matches but diff magnitude equal', () => {
-    // real 2-1 (|diff|=1), pred 0-1 (|diff|=1): same abs diff, same away_goals, wrong result/home
+  it('does NOT award goal_difference when sign differs (strict directional)', () => {
+    // real 2-1 (diff=+1), pred 0-1 (diff=-1): magnitudes match pero signo no.
+    // Strict: solo away_goals (0=1? no — espera, pred 0-1 vs real 2-1 → away=1=1 sí, home 0≠2)
     const result = scoreMatchPrediction({
       realHome: 2, realAway: 1,
       predHome: 0, predAway: 1,
       ps,
     });
-    expect(result).toBe(ps.away_goals + ps.goal_difference);
+    // Ahora SIN goal_difference porque signo no coincide. Solo away_goals.
+    expect(result).toBe(ps.away_goals);
   });
 
-  it('awards away_goals only when abs diff differs', () => {
+  it('awards goal_difference only when sign + magnitude match', () => {
     // real 3-0 (|diff|=3), pred 0-0 (|diff|=0): away_goals match, no other category does
     const result = scoreMatchPrediction({
       realHome: 3, realAway: 0,

@@ -198,10 +198,10 @@ describe('Integration: wildcards and custom point systems', () => {
       .from('match_points').select('points')
       .eq('polla_id', pollaId).eq('user_id', userId).eq('match_id', matches.matchIds[0])
       .single();
-    // correct_result: no (away≠home win), home_goals: 0≠2, away_goals: 2≠0
-    // goal_diff (abs): |−2|=|+2|=2 → YES → 1pt, total_goals: 0+2=2+0=2 → YES → 1pt
-    // base=2, × wildcard x2 = 4
-    expect(mp?.points).toBe(4);
+    // Strict directional: goal_diff requiere mismo signo. Real diff=+2, pred diff=-2.
+    // correct_result: no, home/away: no, goal_diff: signo distinto → NO,
+    // total_goals: 0+2=2+0=2 → 1pt. base=1, × x2 = 2.
+    expect(mp?.points).toBe(2);
   });
 
   it('correct result but not exact — only partial points, no exact_score bonus', async () => {
