@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Settings, Play, Trophy, Globe, Calendar, AlertTriangle, CheckCircle2 } from 'lucide-react';
@@ -29,6 +30,44 @@ export default async function ConfigurarPollaPage({ params }: Props) {
 
   if (!polla) notFound();
   if (polla.admin_id !== user.id) redirect(`/pollas/${params.id}`);
+
+  // Si la polla no tiene torneo aún, autoasignar FIFA World Cup 2026 (api_football_id=1).
+  if (!polla.tournament_id && (polla.status === 'draft' || polla.status === 'open')) {
+    const admin = createAdminClient();
+    const { data: defaultT } = await admin
+      .from('tournaments')
+      .select('id')
+      .eq('api_football_id', 1)
+      .eq('season', '2026')
+      .maybeSingle();
+
+    let defaultTournamentId = defaultT?.id;
+    if (!defaultTournamentId) {
+      const { data: created } = await admin
+        .from('tournaments')
+        .insert({
+          name: 'FIFA World Cup',
+          season: '2026',
+          api_football_id: 1,
+          country: 'World',
+          type: 'Cup',
+          start_date: '2026-06-11',
+          end_date: '2026-07-19',
+          status: 'upcoming',
+        })
+        .select('id')
+        .single();
+      defaultTournamentId = created?.id;
+    }
+
+    if (defaultTournamentId) {
+      await admin
+        .from('pollas')
+        .update({ tournament_id: defaultTournamentId })
+        .eq('id', params.id);
+      redirect(`/pollas/${params.id}/configurar`);
+    }
+  }
 
   // Paralelizar queries dependientes de polla
   const [pendingMembersRes, matchesRes] = await Promise.all([

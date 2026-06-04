@@ -37,12 +37,15 @@ export async function createPolla(formData: FormData) {
     return { error: `Límite alcanzado: no podés crear más de ${maxPollas} pollas.` };
   }
 
-  // Buscar o crear torneo por defecto
+  // Torneo por defecto: FIFA World Cup 2026 (api_football_id=1, season=2026)
+  const DEFAULT_API_ID = 1;
+  const DEFAULT_SEASON = '2026';
+
   const { data: existingTournament } = await admin
     .from('tournaments')
     .select('id')
-    .order('created_at', { ascending: true })
-    .limit(1)
+    .eq('api_football_id', DEFAULT_API_ID)
+    .eq('season', DEFAULT_SEASON)
     .maybeSingle();
 
   let tournamentId = existingTournament?.id;
@@ -51,8 +54,11 @@ export async function createPolla(formData: FormData) {
     const { data: newTournament, error: tError } = await admin
       .from('tournaments')
       .insert({
-        name: 'Mundial FIFA 2026',
-        season: '2026',
+        name: 'FIFA World Cup',
+        season: DEFAULT_SEASON,
+        api_football_id: DEFAULT_API_ID,
+        country: 'World',
+        type: 'Cup',
         start_date: '2026-06-11',
         end_date: '2026-07-19',
         status: 'upcoming',
