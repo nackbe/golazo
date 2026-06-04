@@ -51,7 +51,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     const admin = createAdminClient();
     const { data: polla, error } = await admin
       .from('pollas')
-      .select('id, name, code, status, point_system, wildcards, special_point_system, auto_random_prediction, tournaments(name)')
+      .select('id, name, code, status, point_system, wildcards, special_point_system, auto_random_prediction, bet_deadline_minutes, tournaments(name)')
       .eq('id', params.id)
       .single();
 
@@ -80,6 +80,11 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
 
     const uniqueBonus = ps.unique_exact_bonus;
     const autoRandom = (polla as any).auto_random_prediction === true;
+    const deadlineMin = (polla as any).bet_deadline_minutes ?? 5;
+    const deadlineLabel =
+      deadlineMin >= 60 && deadlineMin % 60 === 0
+        ? `${deadlineMin / 60} hora${deadlineMin / 60 !== 1 ? 's' : ''}`
+        : `${deadlineMin} minuto${deadlineMin !== 1 ? 's' : ''}`;
 
     const img = new ImageResponse(
       (
@@ -362,6 +367,24 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
               </div>
             </div>
           )}
+
+          {/* Nota de cierre de apuestas — bold, encima del footer */}
+          <div
+            style={{
+              display: 'flex',
+              fontSize: '22px',
+              fontWeight: 900,
+              color: '#fde68a',
+              textAlign: 'center',
+              padding: '14px 18px',
+              marginBottom: '16px',
+              background: 'rgba(0,0,0,0.2)',
+              borderRadius: '14px',
+              justifyContent: 'center',
+            }}
+          >
+            Las apuestas cierran {deadlineLabel} antes de cada partido.
+          </div>
 
           {/* Footer — código */}
           <div
