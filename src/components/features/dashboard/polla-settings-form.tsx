@@ -359,7 +359,7 @@ export function PollaSettingsForm({ polla }: { polla: Polla }) {
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 rounded-xl border border-border p-4">
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold">Comodines x2</p>
+              <p className="text-sm font-semibold">Cantidad de comodines x2</p>
               <p className="text-xs text-muted-foreground mt-0.5">Multiplica x2 todos los puntos de un partido.</p>
             </div>
             <NumberInput name="wc_x2" defaultValue={wc('x2', 2)} min={0} max={100} disabled={wildcards.isPending || isLocked} unit="" />
@@ -367,7 +367,7 @@ export function PollaSettingsForm({ polla }: { polla: Polla }) {
 
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 rounded-xl border border-border p-4">
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold">Comodines x3</p>
+              <p className="text-sm font-semibold">Cantidad de comodines x3</p>
               <p className="text-xs text-muted-foreground mt-0.5">Multiplica x3 todos los puntos de un partido.</p>
             </div>
             <NumberInput name="wc_x3" defaultValue={wc('x3', 1)} min={0} max={100} disabled={wildcards.isPending || isLocked} unit="" />
