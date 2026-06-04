@@ -306,7 +306,26 @@ export default async function ConfigurarPollaPage({ params }: Props) {
         </div>
       )}
 
-      {/* Iniciar polla */}
+      {/* Estado activo */}
+      {(polla.status === 'active' || polla.status === 'finished') && (
+        <div className="flex items-center gap-3 rounded-2xl border border-green-200 bg-green-50 p-5">
+          <CheckCircle2 className="h-6 w-6 text-green-600 flex-shrink-0" />
+          <div className="flex-1">
+            <h2 className="font-bold text-green-800">Polla {polla.status === 'active' ? 'activa' : 'finalizada'}</h2>
+            <p className="text-sm text-green-700">
+              {matchesCount > 0
+                ? `${matchesCount} partido${matchesCount !== 1 ? 's' : ''} en el torneo.`
+                : 'No hay partidos cargados.'}
+            </p>
+          </div>
+          <RecalculatePointsButton pollaId={polla.id} />
+        </div>
+      )}
+
+      {/* Configuración avanzada — reglas, puntos, comodines */}
+      <PollaSettingsForm key={polla.status} polla={pollaProp} />
+
+      {/* Iniciar polla — al final, después de toda la configuración */}
       {(polla.status === 'draft' || polla.status === 'open') && (
         <div className="rounded-2xl border border-border/50 bg-card p-5 shadow-sm">
           <div className="flex items-center justify-between gap-4">
@@ -326,25 +345,6 @@ export default async function ConfigurarPollaPage({ params }: Props) {
           </div>
         </div>
       )}
-
-      {/* Estado activo */}
-      {(polla.status === 'active' || polla.status === 'finished') && (
-        <div className="flex items-center gap-3 rounded-2xl border border-green-200 bg-green-50 p-5">
-          <CheckCircle2 className="h-6 w-6 text-green-600 flex-shrink-0" />
-          <div className="flex-1">
-            <h2 className="font-bold text-green-800">Polla {polla.status === 'active' ? 'activa' : 'finalizada'}</h2>
-            <p className="text-sm text-green-700">
-              {matchesCount > 0
-                ? `${matchesCount} partido${matchesCount !== 1 ? 's' : ''} en el torneo.`
-                : 'No hay partidos cargados.'}
-            </p>
-          </div>
-          <RecalculatePointsButton pollaId={polla.id} />
-        </div>
-      )}
-
-      {/* Configuración avanzada — reglas, puntos, comodines (al final, no es prerequisite) */}
-      <PollaSettingsForm key={polla.status} polla={pollaProp} />
 
       {/* Borrar polla */}
       <DeletePollaSection pollaId={polla.id} pollaName={polla.name} />
