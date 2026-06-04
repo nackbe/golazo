@@ -46,7 +46,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     const admin = createAdminClient();
     const { data: polla, error } = await admin
       .from('pollas')
-      .select('id, name, code, status, point_system, wildcards, special_point_system, tournaments(name)')
+      .select('id, name, code, status, point_system, wildcards, special_point_system, auto_random_prediction, tournaments(name)')
       .eq('id', params.id)
       .single();
 
@@ -74,6 +74,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       .map((k) => ({ label: SPECIAL_LABELS[k], pts: (sps as any)[k] }));
 
     const uniqueBonus = ps.unique_exact_bonus;
+    const autoRandom = (polla as any).auto_random_prediction === true;
 
     return new ImageResponse(
       (
@@ -317,6 +318,43 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* Aleatorio si olvidaste predecir */}
+          {autoRandom && (
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                background: 'rgba(251,191,36,0.12)',
+                border: '2px solid rgba(251,191,36,0.4)',
+                borderRadius: '20px',
+                padding: '20px 24px',
+                marginBottom: '20px',
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  fontSize: '24px',
+                  fontWeight: 800,
+                  color: '#fde68a',
+                  marginBottom: '6px',
+                }}
+              >
+                Predicción automática
+              </div>
+              <div
+                style={{
+                  display: 'flex',
+                  fontSize: '20px',
+                  lineHeight: 1.4,
+                  opacity: 0.92,
+                }}
+              >
+                Si no alcanzás a poner tu predicción antes del cierre del partido, el sistema te asigna una al azar (entre 0 y 10 goles por equipo). ¡Mejor que cero, pero no te confíes!
+              </div>
             </div>
           )}
 
