@@ -21,24 +21,48 @@ export interface RankingEvolutionData {
 export async function getRankingHistory(pollaId: string): Promise<RankingEvolutionData> {
   const admin = createAdminClient();
 
-  // 1. Traer historial
-  const { data: history } = await admin
-    .from('ranking_history')
-    .select('user_id, match_id, position, total_points, created_at')
-    .eq('polla_id', pollaId)
-    .order('created_at', { ascending: true });
+  // Traer historial + miembros + primera predicción de la polla en paralelo.
+  // El cutoff filtra entradas de matches anteriores al primer pronóstico
+  // (relevante para pollas que se unen a un torneo ya empezado: evita mostrar
+  // ranking en partidos donde nadie de la polla podía predecir aún).
+  const [historyRes, membersRes, firstPredRes] = await Promise.all([
+    admin
+      .from('ranking_history')
+      .select('user_id, match_id, position, total_points, created_at')
+      .eq('polla_id', pollaId)
+      .order('created_at', { ascending: true }),
+    admin
+      .from('polla_members')
+      .select('user_id, alias')
+      .eq('polla_id', pollaId)
+      .eq('status', 'approved'),
+    admin
+      .from('predictions')
+      .select('created_at')
+      .eq('polla_id', pollaId)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle(),
+  ]);
 
-  // 2. Traer aliases de miembros
-  const { data: members } = await admin
-    .from('polla_members')
-    .select('user_id, alias')
-    .eq('polla_id', pollaId)
-    .eq('status', 'approved');
+  const history = historyRes.data;
+  const members = membersRes.data;
+  const firstPredictionAt = firstPredRes.data?.created_at;
 
   const aliasMap = new Map(members?.map((m) => [m.user_id, m.alias]) ?? []);
 
-  // 3. Traer info de partidos para etiquetas
-  const matchIds = Array.from(new Set((history ?? []).map((h) => h.match_id).filter(Boolean) as string[]));
+  // Si no hubo predicciones todavía, devolver vacío.
+  if (!firstPredictionAt) {
+    return { entries: [], matchLabels: {} };
+  }
+
+  // Filtrar entradas previas al primer pronóstico de la polla.
+  const filteredHistory = (history ?? []).filter(
+    (h) => new Date(h.created_at) >= new Date(firstPredictionAt)
+  );
+
+  // Traer info de partidos para etiquetas (solo de las entradas que sobreviven al filtro)
+  const matchIds = Array.from(new Set(filteredHistory.map((h) => h.match_id).filter(Boolean) as string[]));
   let matchLabels: Record<string, string> = {};
 
   if (matchIds.length > 0) {
@@ -55,15 +79,14 @@ export async function getRankingHistory(pollaId: string): Promise<RankingEvoluti
     }
   }
 
-  const entries: RankingHistoryEntry[] =
-    history?.map((h) => ({
-      user_id: h.user_id,
-      alias: aliasMap.get(h.user_id) ?? '???',
-      match_id: h.match_id,
-      position: h.position,
-      total_points: h.total_points,
-      created_at: h.created_at,
-    })) ?? [];
+  const entries: RankingHistoryEntry[] = filteredHistory.map((h) => ({
+    user_id: h.user_id,
+    alias: aliasMap.get(h.user_id) ?? '???',
+    match_id: h.match_id,
+    position: h.position,
+    total_points: h.total_points,
+    created_at: h.created_at,
+  }));
 
   return { entries, matchLabels };
 }
