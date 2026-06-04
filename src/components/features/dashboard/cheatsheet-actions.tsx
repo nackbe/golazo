@@ -19,7 +19,7 @@ export function CheatsheetActions({ imageUrl, pollaName }: Props) {
   const handleDownload = async () => {
     setDownloading(true);
     try {
-      const res = await fetch(imageUrl);
+      const res = await fetch(imageUrl, { cache: "no-store" });
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -40,7 +40,7 @@ export function CheatsheetActions({ imageUrl, pollaName }: Props) {
   const handleShare = async () => {
     setSharing(true);
     try {
-      const res = await fetch(imageUrl);
+      const res = await fetch(imageUrl, { cache: "no-store" });
       const blob = await res.blob();
       const file = new File([blob], filename, { type: 'image/png' });
 

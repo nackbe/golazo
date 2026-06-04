@@ -394,7 +394,14 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
         width: 1080,
         height: 1920,
         headers: {
-          'Cache-Control': 'public, max-age=0, must-revalidate',
+          // no-store impide que browser/CDN cacheen la PNG. must-revalidate
+          // no era suficiente: cambios de config (ej. desactivar auto_random)
+          // seguían mostrando versión vieja. Cuando todo estable subir a 300.
+          'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+          'CDN-Cache-Control': 'no-store',
+          'Vercel-CDN-Cache-Control': 'no-store',
         },
       }
     );
