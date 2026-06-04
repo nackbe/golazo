@@ -4,6 +4,11 @@ import { getPointSystem, getSpecialPointSystem } from '@/lib/scoring';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+// Crítico: Next.js cachea fetches por defecto. La call a Supabase REST entraba
+// al cache de fetch y devolvía valores viejos de auto_random_prediction tras
+// cambios en config. force-no-store bypassa ese cache.
+export const fetchCache = 'force-no-store';
+export const revalidate = 0;
 
 const POINT_LABELS: Record<string, string> = {
   exact_score: 'Marcador exacto',
