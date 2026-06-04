@@ -6,7 +6,13 @@ export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
   const isProtected = pathname.startsWith('/pollas') || pathname.startsWith('/perfil') || pathname.startsWith('/onboarding');
-  const isAuthPage = pathname === '/login' || pathname.startsWith('/api/auth');
+  // Páginas de auth — usuarios logueados las saltan. reset-password queda fuera
+  // a propósito: el flujo de recuperación abre sesión y necesita renderizar el form.
+  const isAuthPage =
+    pathname === '/login' ||
+    pathname === '/signup' ||
+    pathname === '/forgot-password' ||
+    pathname.startsWith('/api/auth');
 
   if (!user && isProtected) {
     const redirectTo = pathname + request.nextUrl.search;

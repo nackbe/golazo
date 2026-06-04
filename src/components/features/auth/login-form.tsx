@@ -1,7 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { Loader2, Mail, ChevronDown } from 'lucide-react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { Loader2, Mail, Lock } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
 const GoogleIcon = () => (
@@ -18,10 +20,10 @@ interface LoginFormProps {
 }
 
 export function LoginForm({ redirectTo }: LoginFormProps) {
-  const [isLoading, setIsLoading] = useState<'google' | 'magic' | null>(null);
+  const router = useRouter();
+  const [isLoading, setIsLoading] = useState<'google' | 'password' | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [showMagic, setShowMagic] = useState(false);
-  const [magicSent, setMagicSent] = useState(false);
+  const [needsConfirm, setNeedsConfirm] = useState(false);
 
   const handleGoogleLogin = async () => {
     setIsLoading('google');
@@ -41,31 +43,45 @@ export function LoginForm({ redirectTo }: LoginFormProps) {
     }
   };
 
-  const handleMagicLink = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handlePasswordLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setIsLoading('magic');
+    setIsLoading('password');
     setError(null);
-    const email = (new FormData(e.currentTarget).get('email') as string).trim();
+    setNeedsConfirm(false);
+    const form = new FormData(e.currentTarget);
+    const email = (form.get('email') as string).trim().toLowerCase();
+    const password = form.get('password') as string;
+    const supabase = createClient();
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+      const msg = error.message?.toLowerCase() ?? '';
+      if (msg.includes('email not confirmed') || msg.includes('email_not_confirmed')) {
+        setNeedsConfirm(true);
+        setError('Necesitás confirmar tu correo. Revisá tu bandeja de entrada.');
+      } else if (msg.includes('invalid') || msg.includes('credenciales')) {
+        setError('Correo o contraseña incorrectos.');
+      } else {
+        setError('No se pudo iniciar sesión. Intentá de nuevo.');
+      }
+      setIsLoading(null);
+      return;
+    }
+    // Sesión creada. Redirigir respetando redirectTo.
+    const safe = redirectTo && redirectTo.startsWith('/') ? redirectTo : '/pollas';
+    window.location.href = safe;
+  };
+
+  const handleResendConfirm = async (email: string) => {
+    if (!email) return;
     const supabase = createClient();
     const callbackUrl = new URL('/api/auth/callback', window.location.origin);
-    if (redirectTo) {
-      callbackUrl.searchParams.set('redirectTo', redirectTo);
-    }
-    const { error } = await supabase.auth.signInWithOtp({
+    if (redirectTo) callbackUrl.searchParams.set('redirectTo', redirectTo);
+    await supabase.auth.resend({
+      type: 'signup',
       email,
       options: { emailRedirectTo: callbackUrl.toString() },
     });
-    if (error) {
-      const msg = error.message?.toLowerCase() ?? '';
-      if (msg.includes('429') || msg.includes('rate limit') || msg.includes('too many')) {
-        setError('Demasiados intentos. Esperá unos minutos e intentá de nuevo.');
-      } else {
-        setError('No se pudo enviar el link. Intentá de nuevo.');
-      }
-    } else {
-      setMagicSent(true);
-    }
-    setIsLoading(null);
+    setError('Te reenviamos el correo de confirmación.');
   };
 
   return (
@@ -91,69 +107,80 @@ export function LoginForm({ redirectTo }: LoginFormProps) {
         Continuar con Google
       </button>
 
-      {/* Magic link — colapsado por defecto */}
-      {!magicSent ? (
-        <div>
-          <button
-            type="button"
-            onClick={() => { setShowMagic(!showMagic); setError(null); }}
-            className="flex w-full items-center justify-center gap-2 py-2 text-sm font-medium text-foreground/80 transition-colors hover:text-foreground"
-          >
-            <Mail className="h-4 w-4" />
-            ¿No tenés Google? Entrá con tu correo
-          </button>
+      {/* Divider */}
+      <div className="relative my-2">
+        <div className="absolute inset-0 flex items-center">
+          <div className="w-full border-t border-border" />
+        </div>
+        <div className="relative flex justify-center text-xs">
+          <span className="bg-card px-2 text-muted-foreground">o con tu correo</span>
+        </div>
+      </div>
 
-          {showMagic && (
-            <form onSubmit={handleMagicLink} className="mt-3 space-y-2">
-              <input
-                name="email"
-                type="email"
-                placeholder="tu@correo.com"
-                required
-                autoComplete="email"
-                autoFocus
-                disabled={!!isLoading}
-                className="w-full rounded-xl border border-input bg-background px-4 py-2.5 text-sm outline-none placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all disabled:opacity-50"
-              />
-              <button
-                type="submit"
-                disabled={!!isLoading}
-                className="flex w-full items-center justify-center gap-2 rounded-xl border border-border bg-muted px-4 py-2.5 text-sm font-semibold transition-colors hover:bg-secondary disabled:opacity-60"
-              >
-                {isLoading === 'magic' ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Enviando...
-                  </>
-                ) : (
-                  'Enviar link de acceso'
-                )}
-              </button>
-              <p className="text-center text-xs text-muted-foreground">
-                Te enviamos un link al correo. Sin contraseñas.
-              </p>
-            </form>
+      {/* Email + password */}
+      <form onSubmit={handlePasswordLogin} className="space-y-2">
+        <div className="relative">
+          <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <input
+            name="email"
+            type="email"
+            placeholder="tu@correo.com"
+            required
+            autoComplete="email"
+            disabled={!!isLoading}
+            className="w-full rounded-xl border border-input bg-background pl-10 pr-4 py-2.5 text-sm outline-none placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all disabled:opacity-50"
+          />
+        </div>
+        <div className="relative">
+          <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <input
+            name="password"
+            type="password"
+            placeholder="Contraseña"
+            required
+            minLength={8}
+            autoComplete="current-password"
+            disabled={!!isLoading}
+            className="w-full rounded-xl border border-input bg-background pl-10 pr-4 py-2.5 text-sm outline-none placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all disabled:opacity-50"
+          />
+        </div>
+        <button
+          type="submit"
+          disabled={!!isLoading}
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+        >
+          {isLoading === 'password' ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Entrando...
+            </>
+          ) : (
+            'Entrar'
           )}
-        </div>
-      ) : (
-        <div className="rounded-xl border border-primary/30 bg-primary/5 px-4 py-5 text-center">
-          <div className="mb-2 flex justify-center">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
-              <Mail className="h-5 w-5 text-primary" />
-            </div>
-          </div>
-          <p className="font-semibold text-sm">¡Link enviado!</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Revisá tu bandeja y hacé clic en el link para entrar.
-          </p>
-          <button
-            onClick={() => { setMagicSent(false); setShowMagic(true); }}
-            className="mt-3 text-xs text-primary hover:underline"
-          >
-            Usar otro correo
-          </button>
-        </div>
+        </button>
+      </form>
+
+      {needsConfirm && (
+        <button
+          type="button"
+          onClick={() => {
+            const input = document.querySelector<HTMLInputElement>('input[name="email"]');
+            if (input?.value) handleResendConfirm(input.value.trim().toLowerCase());
+          }}
+          className="text-xs text-primary hover:underline w-full text-center"
+        >
+          Reenviar correo de confirmación
+        </button>
       )}
+
+      <div className="flex items-center justify-between text-xs">
+        <Link href="/forgot-password" className="text-muted-foreground hover:text-foreground">
+          ¿Olvidaste tu contraseña?
+        </Link>
+        <Link href="/signup" className="font-semibold text-primary hover:underline">
+          Crear cuenta
+        </Link>
+      </div>
 
     </div>
   );
