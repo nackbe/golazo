@@ -79,7 +79,7 @@ function Toggle({ value, onChange, disabled }: { value: boolean; onChange: (v: b
   );
 }
 
-function NumberInput({ name, defaultValue, min, max, disabled }: { name: string; defaultValue: number; min: number; max: number; disabled?: boolean }) {
+function NumberInput({ name, defaultValue, min, max, disabled, unit = 'pts' }: { name: string; defaultValue: number; min: number; max: number; disabled?: boolean; unit?: string }) {
   return (
     <div className="flex items-center gap-2">
       <input
@@ -91,7 +91,7 @@ function NumberInput({ name, defaultValue, min, max, disabled }: { name: string;
         disabled={disabled}
         className="w-16 rounded-lg border border-input bg-background px-2 py-1.5 text-center text-sm font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
       />
-      <span className="text-xs text-muted-foreground">pts</span>
+      {unit && <span className="text-xs text-muted-foreground">{unit}</span>}
     </div>
   );
 }
@@ -339,12 +339,11 @@ export function PollaSettingsForm({ polla }: { polla: Polla }) {
           </div>
         </div>
 
-        <div className="rounded-xl bg-primary/5 border border-primary/20 px-4 py-3 text-xs text-muted-foreground">
-          <strong className="text-foreground">Los puntos de partido son acumulables.</strong> Si acertás el marcador exacto, ganás al mismo tiempo los puntos por goles local exactos, goles visitante exactos, marcador exacto, diferencia de goles y total de goles. Con los valores default eso suma <strong className="text-foreground">8 puntos</strong> por partido (sin comodín).
-          {ps('unique_exact_bonus', 0) > 0 && (
-            <span className="block mt-1">Si sos el <strong className="text-foreground">único</strong> que acierta el marcador exacto, tus puntos de exacto se multiplican por <strong className="text-foreground">{ps('unique_exact_bonus', 0)}×</strong>.</span>
-          )}
-        </div>
+        {ps('unique_exact_bonus', 0) > 0 && (
+          <div className="rounded-xl bg-primary/5 border border-primary/20 px-4 py-3 text-xs text-muted-foreground">
+            Si sos el <strong className="text-foreground">único</strong> que acierta el marcador exacto, tus puntos de exacto se multiplican por <strong className="text-foreground">{ps('unique_exact_bonus', 0)}×</strong>.
+          </div>
+        )}
       </Block>
 
       {/* Comodines */}
@@ -368,7 +367,7 @@ export function PollaSettingsForm({ polla }: { polla: Polla }) {
               <p className="text-sm font-semibold">Comodines x2</p>
               <p className="text-xs text-muted-foreground mt-0.5">Multiplica x2 todos los puntos de un partido.</p>
             </div>
-            <NumberInput name="wc_x2" defaultValue={wc('x2', 2)} min={0} max={100} disabled={wildcards.isPending || isLocked} />
+            <NumberInput name="wc_x2" defaultValue={wc('x2', 2)} min={0} max={100} disabled={wildcards.isPending || isLocked} unit="" />
           </div>
 
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 rounded-xl border border-border p-4">
@@ -376,12 +375,12 @@ export function PollaSettingsForm({ polla }: { polla: Polla }) {
               <p className="text-sm font-semibold">Comodines x3</p>
               <p className="text-xs text-muted-foreground mt-0.5">Multiplica x3 todos los puntos de un partido.</p>
             </div>
-            <NumberInput name="wc_x3" defaultValue={wc('x3', 1)} min={0} max={100} disabled={wildcards.isPending || isLocked} />
+            <NumberInput name="wc_x3" defaultValue={wc('x3', 1)} min={0} max={100} disabled={wildcards.isPending || isLocked} unit="" />
           </div>
         </div>
 
         <div className="rounded-xl bg-primary/5 border border-primary/20 px-4 py-3 text-xs text-muted-foreground">
-          Cada jugador puede usar <strong className="text-foreground">un solo comodín por partido</strong>. El multiplicador aplica sobre el total acumulado del partido.
+          Cada jugador puede usar <strong className="text-foreground">un solo comodín por partido</strong>. El multiplicador aplica sobre los puntos ganados en ese partido.
         </div>
       </Block>
     </div>
