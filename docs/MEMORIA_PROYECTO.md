@@ -2602,3 +2602,217 @@ Build passing, 84 tests verdes. Commit `eb638a9` deployado. Migraciones 0030-003
 ```sql
 UPDATE profiles SET is_system_admin = true WHERE id = 'TU_UUID';
 ```
+
+---
+
+## SESIÓN 2026-06-03 / 2026-06-04 — Cambios mayores
+
+### Commits aplicados a `main` (en orden)
+
+| Commit | Resumen |
+|---|---|
+| `4910222` | fix: scoring exacto = solo exact_score + joinPolla duplicate-key |
+| `c2afee2` | perf+ui: UI/UX quick wins + paralelización + lazy logos + filtros fixture |
+| `6f30e8e` | fix: filtro LIVE excluye matches pegados fuera de ventana razonable |
+| `f960ba8` | feat: torneo default = FIFA World Cup 2026 (api_football_id=1) |
+| `896721c` | fix: polla list count truncado por Supabase max_rows=1000 |
+| `33cc61f` | fix(critical): sync ahora actualiza scheduled_at de matches existentes |
+| `9d48b11` | feat: auth email+password con confirmación, drop magic link |
+
+---
+
+### 1. Cambio de regla de scoring (CRÍTICO)
+
+**Antes:** marcador exacto sumaba TODAS las categorías que matched por consecuencia (correct_result + home_goals + away_goals + exact_score + goal_difference + total_goals) = 8 pts default.
+
+**Ahora:** marcador exacto suma SOLO `exact_score`. Las otras categorías solo aplican cuando NO se acertó el marcador exacto.
+
+**Bonus único exacto** ahora multiplica `exact_score` directamente. Fórmula final:
+```
+total = exact_score × unique_exact_multiplier × wildcard_multiplier
+```
+
+**Archivos cambiados:**
+- `src/lib/scoring.ts` — `scoreMatchPredictionWithBreakdown` reescrito. Nuevo param `uniqueExactMultiplier?: number`.
+- `src/lib/sync/calculate-points.ts` — `calculateMatchPoints` + `batchCalculateMatchPoints` pasan `uniqueExactMultiplier: isUniqueWinner ? ps.unique_exact_bonus : 1` en lugar de sumar bonus después.
+- `src/app/(dashboard)/pollas/[id]/prediccion/[matchId]/page.tsx` — breakdown UI usa nuevo param, item bonus viene del scoring.
+- Tests `scoring.test.ts` + `integration.test.ts` + `scripts/e2e-smoke.ts` actualizados.
+
+**Recalc en producción:** script `scripts/recalculate-all-pollas.ts` (slim, skip badges/ranking_history/specials) corrido sobre 17 pollas. Todas las `match_points` + `total_points` ya reflejan nueva regla. Si querés recalc completo de badges/ranking_history/specials, hacerlo aparte.
+
+---
+
+### 2. Fix joinPolla duplicate key
+
+**Síntoma:** usuarios ya con request previa (Mostro, Pao) recibían `duplicate key value violates unique constraint "polla_members_polla_id_user_id_key"` al intentar unirse a otra polla.
+
+**Causa raíz:** `joinPolla` chequeaba miembro existente con cliente normal. RLS policy en `polla_members` exige `is_polla_member()` = `status='approved'`. Filas `pending`/`rejected` del propio usuario quedaban ocultas → código asumía "no existe" → INSERT violaba UNIQUE.
+
+**Fix:** [`src/app/(dashboard)/pollas/unirse/actions.ts`](../src/app/(dashboard)/pollas/unirse/actions.ts):
+- Lookup miembro existente ahora con `createAdminClient()` + `.maybeSingle()`.
+- Status `rejected` → permite re-pedir actualizando fila a `pending` (o `approved` si auto_approve).
+
+---
+
+### 3. Filtros nuevos fixture: LIVE / HOY / ESTA SEMANA
+
+`src/components/features/dashboard/fixture-list.tsx`:
+- Tipo `StatusFilter` incluye `'live' | 'today' | 'week'`.
+- `LIVE_STATUSES` set: `['1H', 'HT', '2H', 'ET', 'BT', 'P', 'PEN', 'LIVE']` (excluí `SUSP`/`INT` que se pegan).
+- `isMatchLive(match, now)` requiere status en set **Y** `now - scheduled_at < 4h` (ventana razonable). Sin la ventana, matches con sync fallido hace meses quedaban "en vivo".
+- `nowRef = useMemo(() => new Date(), [statusFilter])` — estable por render.
+
+---
+
+### 4. UI/UX quick wins aplicados (auditoría con agente)
+
+| # | Cambio | Archivo |
+|---|---|---|
+| 1 | Reorden configurar: pending arriba, PollaSettingsForm al final, torneo NO enterrado | `configurar/page.tsx` |
+| 2 | Badge "Pendientes (N)" en header configurar con scroll anchor | `configurar/page.tsx` |
+| 3 | `text-[10px]/[11px]` → `text-xs` global | `fixture-list.tsx` |
+| 4 | Demote "Predicciones especiales" a chip inline (no botón equal-weight) | `pollas/[id]/page.tsx` |
+| 5 | Popular tournament chips → `overflow-x-auto` (no wrap a 3 líneas en móvil) | `tournament-search.tsx` |
+| 6 | Approve/reject buttons 32 → 44 px (touch target Apple HIG) | `pending-members-list.tsx` |
+| 7 | Magic link → email+password (sección 9) | `login-form.tsx` |
+| 8 | Hardcoded `#0d3d1f` → token Tailwind `bg-primary-dark` (10 files) | `tailwind.config.ts` + replace global |
+| 9 | Helper "Escribí al menos 3 letras" en tournament search | `tournament-search.tsx` |
+| 10 | Mostrar deadline real (timestamp) cuando partido cerrado | `prediction-form.tsx` |
+
+---
+
+### 5. Performance quick wins aplicados (auditoría con agente)
+
+| # | Cambio | Archivo | Ganancia estimada |
+|---|---|---|---|
+| 1 | Paralelizar awaits polla+membership+match en prediccion page | `prediccion/[matchId]/page.tsx` | -2 RTT |
+| 2 | Paralelizar polla+membership+count+matches+preds+points en fixture page | `fixture/page.tsx` | -3 RTT |
+| 3 | Paralelizar polla+membership, luego members+streaks+rankingHistory en polla detail | `pollas/[id]/page.tsx` | -3 RTT |
+| 4 | Paralelizar pending+matches en configurar | `configurar/page.tsx` | -1 RTT |
+| 5 | Drop `get_server_time` RPC en prediccion (server clock confiable) | `prediccion/[matchId]/page.tsx` | -1 RTT |
+| 6 | Pollas list count: original era 2 queries × N en loop secuencial (P95 ~6s). Intenté batch en JS pero **Supabase trunca SELECT a max_rows=1000** → counts incorrectos. Fix definitivo: 2N count queries pero todas en `Promise.all` → ~700ms total. | `pollas/page.tsx` | P95 6s → 700ms |
+| 7 | `loading="lazy" decoding="async"` en logos equipos + avatars leaderboard | `fixture-list.tsx`, `pollas/[id]/page.tsx` | -400 logos blockean paint inicial |
+
+**Trampa importante (max_rows):** Supabase silenciosamente trunca SELECTs a 1000 filas por default. Si vas a agregar en JS desde un SELECT batch, mejor hacer `count(*) head=true` por entidad en `Promise.all`.
+
+---
+
+### 6. Default tournament = FIFA World Cup 2026
+
+`src/app/(dashboard)/pollas/nueva/actions.ts`:
+- `createPolla` ahora busca tournament con `api_football_id=1, season='2026'`. Si no existe, lo crea como "FIFA World Cup" con country=World, type=Cup, fechas 2026-06-11 a 2026-07-19.
+
+`src/app/(dashboard)/pollas/[id]/configurar/page.tsx`:
+- Si polla legacy tiene `tournament_id IS NULL` y está en `draft`/`open`, auto-asigna el default y redirige para refresh.
+
+Admin sigue pudiendo cambiar torneo desde el buscador.
+
+---
+
+### 7. Fix CRÍTICO: sync actualiza `scheduled_at` de matches existentes
+
+**Antes:** ni `syncFixtures` (manual), ni `/api/sync/fixtures` (cron), ni `/api/sync` (live cron) actualizaban `scheduled_at` de matches que ya existían en DB. Si API-Football reagendaba un partido, la DB quedaba con la hora vieja, el deadline de apuesta se calculaba contra hora stale, y un jugador podía predecir cuando el partido real ya había empezado. **Integridad del juego comprometida.**
+
+**Fixes en 3 archivos:**
+
+1. `src/app/(dashboard)/pollas/[id]/configurar/actions.ts` (`syncFixtures`):
+   - Existing match lookup ahora incluye `scheduled_at`.
+   - `fixturesToUpdate` filtro dispara con `dateChanged` (NS→NS con fecha distinta), no solo transiciones de status.
+   - Update payload incluye `scheduled_at + venue + round` cuando cambian.
+
+2. `src/app/api/sync/fixtures/route.ts` (cron fixtures cada 6h):
+   - Loads existing matches con `scheduled_at + status`.
+   - Nuevo pass `fixturesToReschedule`: detecta NS con fecha distinta y actualiza ANTES del insert pass.
+
+3. `src/app/api/sync/route.ts` (live cron cada 2 min):
+   - `updateMatchFromFixture` payload ahora incluye `scheduled_at + venue` para consistencia.
+
+**Trigger manual ejecutado post-fix:** `POST /api/sync/fixtures` → 2 fixture syncs sobre 11 tournaments. Reagendamientos pendientes ya aplicados.
+
+---
+
+### 8. Recalc script — `scripts/recalculate-all-pollas.ts`
+
+One-shot tras cambio de regla scoring. Slim version (skip badges/ranking_history/specials para velocidad). 17 pollas procesadas correctamente. Ranking history viejo NO recalculado (no crítico). Special predictions NO recalculadas en este pase.
+
+Comando: `npx tsx -r dotenv/config scripts/recalculate-all-pollas.ts dotenv_config_path=.env.local`.
+
+---
+
+### 9. Auth email+password + drop magic link
+
+**Implementado:**
+- `/signup` — form email+password+confirm. Llama `auth.signUp` con `emailRedirectTo` callback. UI muestra "revisá tu correo".
+- `/forgot-password` — form pide email, llama `auth.resetPasswordForEmail`. Redirect URL `/reset-password`.
+- `/reset-password` — form nueva contraseña tras click en email. Detecta sesión recovery con `auth.getSession()`. Si missing → "link expirado".
+- `login-form.tsx` reescrito: drop magic link, agregado email+password debajo de Google. Manejo de `email_not_confirmed` con botón "reenviar correo".
+- `middleware.ts`: `/signup`, `/forgot-password` ahora también treated como auth pages (redirigen a `/pollas` si logueado). `/reset-password` intencionalmente FUERA — necesita renderizarse con sesión recovery.
+
+**Componentes nuevos:**
+- `src/components/features/auth/signup-form.tsx`
+- `src/components/features/auth/forgot-password-form.tsx`
+- `src/components/features/auth/reset-password-form.tsx`
+
+**Páginas nuevas:**
+- `src/app/(auth)/signup/page.tsx`
+- `src/app/(auth)/forgot-password/page.tsx`
+- `src/app/(auth)/reset-password/page.tsx`
+
+---
+
+### ⚠️ BUG ACTIVO — Envío de correo de confirmación NO funciona en signup
+
+**Estado:** la persona se registra en `/signup`, ve la pantalla "revisá tu correo", pero **el correo nunca llega**.
+
+**Hipótesis para investigar próxima sesión:**
+
+1. **Supabase Auth → Providers → Email → "Confirm email" puede estar OFF.** Sin esa toggle, `auth.signUp` confirma automáticamente y no manda email. Verificar primero.
+
+2. **SMTP no configurado o credenciales inválidas en Supabase.** Memoria documenta Gmail (`devmostrodev@gmail.com` con App Password) funcionando para magic link. Verificar Auth → Settings → SMTP que esté ON con esas credenciales. App Password debe estar sin espacios.
+
+3. **Rate limit Supabase free tier** (4 emails/hora). Si vienen testeando varios signups → bloqueado por una hora.
+
+4. **Email template "Confirm signup" deshabilitado** o roto. Authentication → Email Templates → verificar template existe y referencia `{{ .ConfirmationURL }}`.
+
+5. **Site URL / Redirect URL no incluye `/api/auth/callback`** → email no se genera porque Supabase rechaza la redirect.
+
+6. **Gmail flagging emails como spam** — revisar carpeta spam del destinatario antes que nada.
+
+**Pasos sugeridos para próxima sesión:**
+- Supabase dashboard → Logs → Auth: ver si hay error al intentar mandar email.
+- Probar signup con email propio + revisar inbox + spam.
+- Verificar 4 settings: Confirm email ON, SMTP ON con Gmail, Redirect URLs incluye `/api/auth/callback`, template Confirm signup activo.
+
+**Workaround temporal:** mientras se arregla, el admin puede confirmar manualmente al usuario en Supabase dashboard → Authentication → Users → click usuario → "Confirm user".
+
+---
+
+### Estado actual (2026-06-04, fin de sesión)
+
+**Build:** verde. 76/76 unit tests pasan.
+
+**Deploy:** todos los commits de la sesión están en `main` y deployados a Vercel.
+
+**Cron sync:** funcionando, incluyendo nuevo fix de `scheduled_at`.
+
+**Pendientes con prioridad:**
+
+| Prioridad | Pendiente |
+|---|---|
+| 🔴 Crítico | Email de confirmación signup no llega — diagnosticar dashboard Supabase |
+| 🟡 Alta | Activar Supavisor pooler (Supabase dashboard, sin código) — biggest infra win |
+| 🟡 Alta | Verificar/aplicar migración 0030 en producción (índices performance) |
+| 🟢 Media | RLS helpers `is_polla_member`/`is_polla_admin` plpgsql → `LANGUAGE sql STABLE` (5-10× speedup queries) |
+| 🟢 Media | Indices faltantes: `polla_members(user_id, status)`, `polla_members(polla_id, status)`, `pollas(admin_id, created_at DESC)`, `predictions(polla_id, user_id)` |
+| 🟢 Media | N+1 en `predicciones-especiales` page (3 scans matches) |
+| 🟢 Media | `FixtureList` cards no memoizadas — re-renderiza 200 cards en cada keystroke |
+| 🟢 Media | Cachear `profile` en cookie/`unstable_cache` para layout (auth query duplicada) |
+| ⚪ Baja | ISR/`unstable_cache` para polla metadata |
+| ⚪ Baja | Dominio propio + Resend (para producción real con muchos emails) |
+
+**Migraciones aplicadas en prod:** 0001–0032. Sin pendientes.
+
+**Archivos nuevos relevantes para retomar:**
+- `scripts/recalculate-all-pollas.ts` — recalc one-shot tras cambios de scoring.
+- Componentes auth nuevos (signup/forgot/reset).
+
