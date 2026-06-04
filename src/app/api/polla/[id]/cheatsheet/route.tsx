@@ -312,7 +312,8 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
         width: 1080,
         height: 1920,
         headers: {
-          'Cache-Control': 'public, max-age=300, s-maxage=300',
+          // No cache mientras se estabiliza. Cuando esté sólido subir a 5 min.
+          'Cache-Control': 'public, max-age=0, must-revalidate',
         },
       }
     );

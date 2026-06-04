@@ -55,7 +55,9 @@ export default async function CheatsheetPage({ params }: Props) {
     );
   }
 
-  const imageUrl = `/api/polla/${params.id}/cheatsheet`;
+  // Cache-bust por deploy/server time. Evita que el browser sirva
+  // versiones rotas anteriores (los primeros deploys devolvieron 0 bytes).
+  const imageUrl = `/api/polla/${params.id}/cheatsheet?v=${Date.now()}`;
 
   return (
     <div className="mx-auto max-w-md space-y-4">
