@@ -219,9 +219,12 @@ export function PollaSettingsForm({ polla }: { polla: Polla }) {
 
         <div className="space-y-1.5">
           <label htmlFor="status" className="text-sm font-semibold">Estado</label>
-          <input type="hidden" name="status" defaultValue={polla.status} />
+          {/* Si locked, el select va disabled (no envía valor) y un hidden
+              fuerza el status actual. Si no, el select envía su propio valor. */}
+          {isLocked && <input type="hidden" name="status" value={polla.status} />}
           <select
             id="status"
+            name={isLocked ? undefined : 'status'}
             defaultValue={polla.status}
             disabled={general.isPending || isLocked}
             className="w-full rounded-xl border border-input bg-background px-4 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
