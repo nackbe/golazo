@@ -88,18 +88,40 @@ async function runFixtureSync() {
 
       const { data: existingMatches } = await admin
         .from('matches')
-        .select('api_football_id')
+        .select('id, api_football_id, status, scheduled_at')
         .eq('tournament_id', tournamentId);
 
-      const existingApiIds = new Set(
+      const existingByApiId = new Map(
         (existingMatches || [])
-          .map((m) => m.api_football_id)
-          .filter((id): id is number => id !== null)
+          .filter((m): m is typeof m & { api_football_id: number } => m.api_football_id !== null)
+          .map((m) => [m.api_football_id, m])
       );
 
       const newFixtures = fixtures.filter(
-        (f: any) => f.fixture?.id && !existingApiIds.has(f.fixture.id)
+        (f: any) => f.fixture?.id && !existingByApiId.has(f.fixture.id)
       );
+
+      // CRÍTICO: detectar partidos NS cuya fecha cambió (reagendamiento de API-Football).
+      // Sin esto, el deadline de apuesta se calcula contra la hora vieja y los jugadores
+      // podrían predecir cuando el partido ya empezó.
+      const TERMINAL_STATUSES = new Set(['FT', 'AFT', 'CANC', 'ABD', 'AWD', 'WO']);
+      const fixturesToReschedule = fixtures.filter((f: any) => {
+        if (!f.fixture?.id || !f.fixture?.date) return false;
+        const existing = existingByApiId.get(f.fixture.id);
+        if (!existing) return false;
+        if (TERMINAL_STATUSES.has(existing.status || '')) return false;
+        return f.fixture.date !== existing.scheduled_at;
+      });
+
+      // Aplicar updates de scheduled_at (no espera que sea masivo, suele ser pocos por sync)
+      for (const f of fixturesToReschedule) {
+        const existing = existingByApiId.get(f.fixture.id)!;
+        await admin
+          .from('matches')
+          .update({ scheduled_at: f.fixture.date, venue: f.fixture?.venue?.name || null })
+          .eq('id', existing.id);
+      }
+      results.fixtureSyncs += fixturesToReschedule.length;
 
       if (newFixtures.length === 0) {
         await admin

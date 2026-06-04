@@ -33,18 +33,25 @@ function updateMatchFromFixture(
   const awayGoals = fixture.goals?.away ?? null;
   const homePenaltyGoals = fixture.score?.penalty?.home ?? null;
   const awayPenaltyGoals = fixture.score?.penalty?.away ?? null;
+  // scheduled_at se actualiza para mantener consistencia (e.g. reagendamientos
+  // detectados al consultar live=all). venue también puede cambiar.
+  const scheduledAt = fixture.fixture?.date ?? null;
+  const venue = fixture.fixture?.venue?.name ?? null;
 
-  return admin
-    .from('matches')
-    .update({
-      status: newStatus,
-      home_goals: homeGoals,
-      away_goals: awayGoals,
-      home_penalty_goals: homePenaltyGoals,
-      away_penalty_goals: awayPenaltyGoals,
-    })
+  const payload: Record<string, any> = {
+    status: newStatus,
+    home_goals: homeGoals,
+    away_goals: awayGoals,
+    home_penalty_goals: homePenaltyGoals,
+    away_penalty_goals: awayPenaltyGoals,
+  };
+  if (scheduledAt) payload.scheduled_at = scheduledAt;
+  if (venue) payload.venue = venue;
+
+  return (admin.from('matches') as any)
+    .update(payload)
     .eq('id', matchId)
-    .then(({ error }) => ({ error })) as any;
+    .then(({ error }: { error: any }) => ({ error }));
 }
 
 function isAuthorized(request: Request): boolean {

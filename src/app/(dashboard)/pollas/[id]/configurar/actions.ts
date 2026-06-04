@@ -570,10 +570,10 @@ export async function syncFixtures(pollaId: string, selectedRounds?: string[]) {
   // El botón manual sincroniza TODOS los fixtures del torneo, sin importar la fase.
   // Esto evita que partidos de nuevas fases (ej: octavos tras fase de grupos) se ignoren.
 
-  // Consultar partidos existentes del torneo (id + api_football_id + status)
+  // Consultar partidos existentes del torneo (id + api_football_id + status + scheduled_at)
   const { data: existingMatches } = await admin
     .from('matches')
-    .select('id, api_football_id, status')
+    .select('id, api_football_id, status, scheduled_at')
     .eq('tournament_id', tournament.id);
 
   const existingByApiId = new Map(
@@ -582,7 +582,7 @@ export async function syncFixtures(pollaId: string, selectedRounds?: string[]) {
       .map((m) => [m.api_football_id, m])
   );
 
-  // Separar: nuevos vs. existentes con resultado disponible en la API
+  // Separar: nuevos vs. existentes con cambios (resultado, status o scheduled_at)
   const TERMINAL_STATUSES = new Set(['FT', 'AFT', 'CANC', 'ABD', 'AWD', 'WO']);
   const LIVE_STATUSES = new Set(['1H', 'HT', '2H', 'ET', 'P', 'BT']);
 
@@ -591,11 +591,19 @@ export async function syncFixtures(pollaId: string, selectedRounds?: string[]) {
     if (!f.fixture?.id) return false;
     const existing = existingByApiId.get(f.fixture.id);
     if (!existing) return false;
-    // Solo actualizar si la API tiene nuevo estado (terminó o tiene goles)
-    const apiStatus = f.fixture?.status?.short;
     const alreadyFinal = TERMINAL_STATUSES.has(existing.status || '');
     if (alreadyFinal) return false;
-    return TERMINAL_STATUSES.has(apiStatus || '') || LIVE_STATUSES.has(apiStatus || '');
+    const apiStatus = f.fixture?.status?.short;
+    const newDate = f.fixture?.date;
+    // CRÍTICO: actualizar si la fecha cambió (reagendamiento), aunque siga en NS.
+    // Sin esto, los deadlines de apuesta se calculan contra la hora vieja y
+    // los jugadores podrían predecir cuando el partido ya empezó.
+    const dateChanged = !!newDate && newDate !== existing.scheduled_at;
+    return (
+      dateChanged ||
+      TERMINAL_STATUSES.has(apiStatus || '') ||
+      LIVE_STATUSES.has(apiStatus || '')
+    );
   });
 
   // === Insertar nuevos fixtures ===
@@ -654,19 +662,30 @@ export async function syncFixtures(pollaId: string, selectedRounds?: string[]) {
     fixturesInserted = matchesToInsert.length;
   }
 
-  // === Actualizar resultados de partidos existentes ===
+  // === Actualizar resultados + fecha de partidos existentes ===
   let fixturesUpdated = 0;
   for (const f of fixturesToUpdate) {
     const existing = existingByApiId.get(f.fixture.id)!;
     const apiStatus = f.fixture?.status?.short;
     const isFinished = TERMINAL_STATUSES.has(apiStatus || '');
-    await admin.from('matches').update({
+    const updatePayload: Record<string, any> = {
       status: apiStatus,
       home_goals: isFinished ? f.goals?.home ?? null : null,
       away_goals: isFinished ? f.goals?.away ?? null : null,
       home_penalty_goals: isFinished ? f.score?.penalty?.home ?? null : null,
       away_penalty_goals: isFinished ? f.score?.penalty?.away ?? null : null,
-    }).eq('id', existing.id);
+    };
+    // Actualizar scheduled_at SOLO si cambió (evita writes inútiles)
+    if (f.fixture?.date && f.fixture.date !== existing.scheduled_at) {
+      updatePayload.scheduled_at = f.fixture.date;
+    }
+    if (f.fixture?.venue?.name) {
+      updatePayload.venue = f.fixture.venue.name;
+    }
+    if (f.league?.round) {
+      updatePayload.round = f.league.round;
+    }
+    await (admin.from('matches') as any).update(updatePayload).eq('id', existing.id);
     fixturesUpdated++;
   }
 
