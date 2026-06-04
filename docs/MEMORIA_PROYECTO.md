@@ -2816,3 +2816,141 @@ Comando: `npx tsx -r dotenv/config scripts/recalculate-all-pollas.ts dotenv_conf
 - `scripts/recalculate-all-pollas.ts` — recalc one-shot tras cambios de scoring.
 - Componentes auth nuevos (signup/forgot/reset).
 
+
+---
+
+## SESIÓN 2026-06-04 (segunda parte) — Ajustes scoring, ranking chart, cheatsheet, auth
+
+### Commits
+
+| Commit | Resumen |
+|---|---|
+| `0b21687` | fix: remove duplicate 'Sin predicción' filter |
+| `8e1676f` / `5b1f987` | fix: ranking chart filter — by predicted matches (no por created_at) |
+| `b3c7fa4` | ui: move 'Iniciar polla' block to end of configurar |
+| `f26082b` | fix: goal_difference strict directional (no abs) |
+| `868d5a9` / `93d9fd8` / `9c23757` / `582a3a5` / `644ff71` | feat+fixes: cheatsheet PNG compartible |
+
+---
+
+### Resoluciones y cambios
+
+#### Filtros fixture
+- Quitada pill "Sin predicción" (redundante con "Por predecir").
+- "Por predecir" redefinido a `open && !hasPrediction` (semántica esperada).
+- LIVE filter requiere ahora `LIVE_STATUSES` + `scheduled_at` dentro últimos 4h (excluí SUSP/INT pegados).
+
+#### Ranking chart
+- Filtra `ranking_history` por `match_id ∈ predicted_match_ids` (set de matches con predicción en esa polla).
+- Antes filtraba por `created_at` que no servía: cuando `batchCalculateMatchPoints` procesa retroactivamente, todos los snapshots quedan con created_at simultáneo.
+- Si polla no tiene predicciones → chart muestra empty state.
+
+#### Configurar page reorden
+- "Iniciar polla" movido al final (antes de Delete). Orden actual:
+  1. Pendientes
+  2. Torneo
+  3. Partidos (o Sincronizar si active)
+  4. Estado activo / RecalculatePointsButton
+  5. PollaSettingsForm
+  6. **Iniciar polla** (solo si draft/open)
+  7. Delete
+
+#### Scoring rule — goal_difference strict directional
+- Antes: `Math.abs(realDiff) === Math.abs(predDiff)` (premiaba errores simétricos).
+- Ahora: `realDiff === predDiff` (signo + magnitud).
+- Predecir `0-3` cuando real es `3-0` YA NO paga goal_difference.
+- Predecir `1-0` cuando real es `2-1` sigue pagando (mismo signo + magnitud).
+- Tests + e2e smoke actualizados. `recalculate-all-pollas.ts` corrido sobre 17 pollas en prod.
+
+#### Email confirmation bug — RESUELTO
+- Causa: log mostraba `action: user_repeated_signup`. Usuario `nerv201@hotmail.com` ya estaba registrado de pruebas previas. Supabase silenciosamente NO manda email en re-signup (anti-enumeration security).
+- Fix: borrar usuario en Authentication → Users → reintentar. O usar email nuevo. O usar login → "reenviar confirmación" (ya implementado).
+- SMTP estaba OK, "Confirm email" toggle OK. Falso positivo.
+
+---
+
+### Cheatsheet PNG compartible (feature nueva)
+
+**Archivos nuevos:**
+- `src/app/api/polla/[id]/cheatsheet/route.tsx` — endpoint `next/og` (`ImageResponse`). 1080×1920 PNG.
+- `src/app/(dashboard)/pollas/[id]/cheatsheet/page.tsx` — preview + actions.
+- `src/components/features/dashboard/cheatsheet-actions.tsx` — client component con Web Share API + download.
+
+**Cambios mínimos en archivos existentes:**
+- `pollas/[id]/page.tsx`: 1 chip nuevo "Compartir reglas" al lado de "Predicciones especiales". Solo aparece si `status !== 'draft'`. Resto intacto.
+
+**Decisiones técnicas:**
+- **Runtime nodejs** (no edge). Edge crasheaba silencioso con `supabase-js` admin client + devolvía 0 bytes.
+- **Sin emojis.** Satori sin font provider crashea con glyphs faltantes. Reemplazados con texto plano.
+- **`display: flex` explícito en cada `<div>`.** Satori requiere display en todo non-text container.
+- **try/catch** envolviendo toda la handler — errores se ven en network tab como 500 + mensaje en lugar de 0 bytes silencioso.
+- **Cache-Control `no-cache`** mientras se estabiliza. Subir a 5min cuando confirmado sólido.
+- **Cache-bust `?v={Date.now()}`** en el src de la imagen — evita que browser sirva respuestas viejas rotas.
+- **Bloquea draft** — devuelve 403 si polla está en borrador (reglas pueden cambiar).
+- **Acceso:** verifica membresía o admin antes de mostrar.
+
+**Layout final del PNG:**
+1. Header: "GOLAZO" + nombre polla + torneo
+2. Puntos por partido (lista categorías con pts > 0)
+3. Bonus único exacto (si configurado > 1)
+4. Comodines (cards x2/x3 cuando quantity > 0) + tip de uso ("¡Usalos cuando estés muyyy seguro!")
+5. Predicciones especiales del torneo (champion, finalist, third_place, least_goals_against, worst_team, top_scorer_team — filtrados por > 0)
+6. Footer card: código de invitación grande + URL app
+
+**Voseo consistente** en texts (Podés, Usalos, estés). Web Share API nativa abre share sheet del SO (WhatsApp/IG/etc). Fallback descarga PNG manual.
+
+---
+
+### Especiales — explicación completa de cálculo (para referencia)
+
+`updateTournamentSpecialResults(tournamentId)` corre automáticamente desde el cron `/api/sync` cada 2 min después de actualizar partidos. 6 tipos:
+
+| Tipo | Cómo se calcula | Cuándo |
+|---|---|---|
+| `champion` | Ganador del partido `round = 'Final'` o `'Grand Final'`. | Auto cuando partido Final está FT/AFT. |
+| `finalist` | Perdedor del partido Final. | Igual que champion. |
+| `third_place` | Ganador del partido `round ilike '%3rd%'`/`%Third%'`/`%3er%'`. | Auto cuando partido 3er lugar está FT/AFT. |
+| `least_goals_against` | Stats JS sobre todos los matches FT del torneo: equipo con menos goles en contra. | Recalculado cada ciclo. Valor final estable al cerrar torneo. |
+| `worst_team` | Stats JS: peor diferencia gf−ga. | Idem. |
+| `top_scorer_team` | Stats JS: equipo con más goles a favor. (NO jugador individual.) | Idem. |
+
+**Frecuencia:** cada ciclo cron (2 min) re-calcula stats.
+
+---
+
+### ⚠️ Pendientes específicos — predicciones especiales
+
+1. **Final con penales — champion/finalist sin asignar.**
+   `updateTournamentSpecialResults` actualmente: `if home_goals > away_goals → winner`, sino al revés, sino `null` (empate). En empate (definido por penales) deja `winner = null` y nunca se setea champion.
+   - **Fix necesario:** chequear `home_penalty_goals`/`away_penalty_goals` cuando el match en regulación quedó empatado. Si penalty goals presentes, definir winner por penales.
+   - **Workaround temporal:** admin debería poder asignar manualmente — UI no existe todavía.
+
+2. **Ligas/torneos sin partido "Final" — champion no se asigna automático.**
+   Ligas de puntos (Premier, Serie A, MLS) terminan por tabla, no por partido único llamado "Final". `updateTournamentSpecialResults` no detecta nada → champion/finalist/third_place quedan vacíos → predicciones especiales correspondientes no suman puntos.
+   - **Fix necesario:** UI admin en configurar para marcar manualmente campeón/finalista/3er lugar al final del torneo.
+   - **Alternativa más compleja:** detectar tipo de torneo (`tournaments.type = 'League'`) y calcular campeón por puntos acumulados del torneo. Requiere standings — API-Football tiene endpoint pero hay que sumarlo.
+
+3. **`top_scorer_team` ≠ máximo goleador (jugador).**
+   Hoy es "equipo más goleador del torneo". Si querés "máximo goleador" (jugador individual), modelo cambia: necesitás endpoint `/players/topscorers` de API-Football + nuevo tipo `top_scorer_player` con `player_id` en lugar de `team_id`. Migración + UI + endpoint sync. Fuera de scope inmediato.
+
+---
+
+### Estado consolidado al final de la sesión (2026-06-04, segunda parte)
+
+**Build:** verde. 76/76 unit tests pasan.
+**Deploy:** todos los commits en `main`, Vercel auto-deploy.
+**Cron:** sigue funcional.
+
+**Pendientes priorizados acumulados:**
+
+| Prioridad | Pendiente | Notas |
+|---|---|---|
+| 🟡 Alta | UI admin "Marcar campeón/finalista manualmente" | Cubre penales + ligas sin Final |
+| 🟡 Alta | Activar Supavisor pooler Supabase | Sin código, biggest infra win |
+| 🟢 Media | Subir cache cheatsheet a 5min cuando confirmado estable | Quitar `?v={Date.now()}` también |
+| 🟢 Media | RLS helpers plpgsql → `LANGUAGE sql STABLE` | 5-10× speedup queries |
+| 🟢 Media | Indices faltantes (varios) | Ver memoria sesión anterior |
+| 🟢 Media | FixtureList memoizar cards | Re-render 200 cards en keystrokes |
+| ⚪ Baja | Top scorer player (no team) | Requiere endpoint API + migración |
+| ⚪ Baja | Dominio propio + Resend para emails | Producción real |
+
