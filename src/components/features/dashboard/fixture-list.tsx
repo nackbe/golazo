@@ -64,7 +64,7 @@ interface Props {
   showingAll?: boolean;
 }
 
-type StatusFilter = 'all' | 'live' | 'today' | 'week' | 'open' | 'closed' | 'missing' | 'predicted';
+type StatusFilter = 'all' | 'live' | 'today' | 'week' | 'open' | 'closed' | 'predicted';
 
 // Status que indican partido realmente en curso. Excluye SUSP/INT que pueden
 // quedarse pegados si el sync falla.
@@ -150,7 +150,6 @@ const STATUS_LABELS: Record<StatusFilter, string> = {
   week: 'Esta semana',
   open: 'Por predecir',
   closed: 'Cerrado',
-  missing: 'Sin predicción',
   predicted: 'Predicho',
 };
 
@@ -250,9 +249,9 @@ export function FixtureList({ pollaId, matches, predictions, betDeadlineMinutes,
       if (statusFilter === 'live') return isMatchLive(match, nowRef);
       if (statusFilter === 'today') return isSameDay(new Date(match.scheduled_at), nowRef);
       if (statusFilter === 'week') return isThisWeek(new Date(match.scheduled_at), nowRef);
-      if (statusFilter === 'open') return open;
+      // "Por predecir" = abierto y sin predicción (semantica esperada por el usuario).
+      if (statusFilter === 'open') return open && !hasPrediction;
       if (statusFilter === 'closed') return !open;
-      if (statusFilter === 'missing') return open && !hasPrediction;
       if (statusFilter === 'predicted') return hasPrediction;
 
       return true;
@@ -537,7 +536,7 @@ export function FixtureList({ pollaId, matches, predictions, betDeadlineMinutes,
 
         {/* Filtros de estado siempre visibles */}
         <div className="flex items-center gap-1.5 flex-wrap">
-          {(['all', 'live', 'today', 'week', 'open', 'missing', 'predicted', 'closed'] as StatusFilter[]).map((key) => (
+          {(['all', 'live', 'today', 'week', 'open', 'predicted', 'closed'] as StatusFilter[]).map((key) => (
             <button
               key={key}
               onClick={() => {
