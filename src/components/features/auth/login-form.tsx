@@ -81,7 +81,7 @@ export function LoginForm({ redirectTo }: LoginFormProps) {
       <button
         onClick={handleGoogleLogin}
         disabled={!!isLoading}
-        className="flex w-full items-center justify-center gap-3 rounded-xl bg-[#0d3d1f] px-4 py-3.5 text-sm font-bold text-white shadow-sm transition-opacity hover:opacity-90 disabled:opacity-60"
+        className="flex w-full items-center justify-center gap-3 rounded-xl bg-primary-dark px-4 py-3.5 text-sm font-bold text-white shadow-sm transition-opacity hover:opacity-90 disabled:opacity-60"
       >
         {isLoading === 'google' ? (
           <Loader2 className="h-5 w-5 animate-spin" />
@@ -97,11 +97,10 @@ export function LoginForm({ redirectTo }: LoginFormProps) {
           <button
             type="button"
             onClick={() => { setShowMagic(!showMagic); setError(null); }}
-            className="flex w-full items-center justify-center gap-1.5 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+            className="flex w-full items-center justify-center gap-2 py-2 text-sm font-medium text-foreground/80 transition-colors hover:text-foreground"
           >
-            <Mail className="h-3.5 w-3.5" />
+            <Mail className="h-4 w-4" />
             ¿No tenés Google? Entrá con tu correo
-            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showMagic ? 'rotate-180' : ''}`} />
           </button>
 
           {showMagic && (

@@ -15,6 +15,7 @@ interface Props {
     wildcard_used: 'x2' | 'x3' | null;
   } | null;
   wildcardsAvailable: { x2: number; x3: number };
+  deadlineISO?: string;
 }
 
 function GoalInput({
@@ -70,6 +71,7 @@ export function PredictionForm({
   isOpen,
   existingPrediction,
   wildcardsAvailable,
+  deadlineISO,
 }: Props) {
   const [homeGoals, setHomeGoals] = useState(existingPrediction?.home_goals ?? 0);
   const [awayGoals, setAwayGoals] = useState(existingPrediction?.away_goals ?? 0);
@@ -103,11 +105,23 @@ export function PredictionForm({
   };
 
   if (!isOpen) {
+    const deadlineLabel = deadlineISO
+      ? new Date(deadlineISO).toLocaleString('es-ES', {
+          day: '2-digit',
+          month: 'short',
+          hour: '2-digit',
+          minute: '2-digit',
+          timeZone: 'America/Bogota',
+        })
+      : null;
     return (
       <div className="rounded-xl border bg-muted/50 p-6 text-center space-y-1">
         <p className="font-medium text-muted-foreground text-sm">
           El plazo de apuestas para este partido ya cerró.
         </p>
+        {deadlineLabel && (
+          <p className="text-xs text-muted-foreground">Cerró: {deadlineLabel}</p>
+        )}
         {existingPrediction && (
           <p className="text-2xl font-black">
             {existingPrediction.home_goals} – {existingPrediction.away_goals}

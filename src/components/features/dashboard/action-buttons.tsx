@@ -231,7 +231,7 @@ export function ActivatePollaButton({ disabled, pollaId }: ActivatePollaButtonPr
         type="button"
         disabled={disabled || isPending}
         onClick={() => setShowConfirm(true)}
-        className="gap-1.5 bg-[#0d3d1f] hover:bg-[#0d3d1f]/90"
+        className="gap-1.5 bg-primary-dark hover:bg-primary-dark/90"
       >
         {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
         {isPending ? 'Iniciando...' : 'Iniciar polla'}
@@ -263,7 +263,7 @@ export function ActivatePollaButton({ disabled, pollaId }: ActivatePollaButtonPr
               </Button>
               <Button
                 type="button"
-                className="flex-1 gap-1.5 bg-[#0d3d1f] hover:bg-[#0d3d1f]/90"
+                className="flex-1 gap-1.5 bg-primary-dark hover:bg-primary-dark/90"
                 onClick={handleConfirm}
               >
                 <Play className="h-4 w-4" />

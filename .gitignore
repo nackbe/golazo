@@ -50,3 +50,4 @@ Thumbs.db
 # Seed data
 .mega-league-ids.json
 .test-league-ids.json
+.claude/

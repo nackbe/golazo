@@ -34,51 +34,53 @@ export default async function PollaDetailPage({ params }: Props) {
 
   if (!user) redirect('/login');
 
-  const { data: polla } = await supabase
-    .from('pollas')
-    .select('*, tournaments(name)')
-    .eq('id', params.id)
-    .single();
+  // Polla + membership en paralelo (necesarios para auth check)
+  const [pollaRes, membershipRes] = await Promise.all([
+    supabase
+      .from('pollas')
+      .select('*, tournaments(name)')
+      .eq('id', params.id)
+      .single(),
+    supabase
+      .from('polla_members')
+      .select('status')
+      .eq('polla_id', params.id)
+      .eq('user_id', user.id)
+      .maybeSingle(),
+  ]);
+  const polla = pollaRes.data;
+  const membership = membershipRes.data;
 
   if (!polla) notFound();
-
-  const { data: membership } = await supabase
-    .from('polla_members')
-    .select('status')
-    .eq('polla_id', params.id)
-    .eq('user_id', user.id)
-    .single();
 
   const isAdmin = polla.admin_id === user.id;
   const isMember = membership?.status === 'approved';
 
   if (!isAdmin && !isMember) redirect('/pollas');
 
-  // Usar admin client para que cualquier miembro aprobado pueda ver el ranking completo
-  // (la RLS por defecto solo deja ver la fila propia)
+  // Resto de queries en paralelo. Admin client porque RLS limita ranking_members visible.
   const admin = createAdminClient();
+  const adminPlays = polla.admin_plays ?? true;
   let membersQuery = admin
     .from('polla_members')
     .select('alias, total_points, user_id, profiles(avatar_url)')
     .eq('polla_id', params.id)
     .eq('status', 'approved');
-
-  // Excluir al admin del ranking si admin_plays = false
-  const adminPlays = polla.admin_plays ?? true;
   if (!adminPlays) {
     membersQuery = membersQuery.neq('user_id', polla.admin_id);
   }
 
-  const { data: members } = await membersQuery.order('total_points', { ascending: false });
-
-  const { data: streaks } = await admin
-    .from('player_streaks')
-    .select('user_id, current_result_streak, current_exact_streak, current_negative_streak')
-    .eq('polla_id', params.id);
-
+  const [membersRes, streaksRes, rankingHistory] = await Promise.all([
+    membersQuery.order('total_points', { ascending: false }),
+    admin
+      .from('player_streaks')
+      .select('user_id, current_result_streak, current_exact_streak, current_negative_streak')
+      .eq('polla_id', params.id),
+    getRankingHistory(params.id),
+  ]);
+  const members = membersRes.data;
+  const streaks = streaksRes.data;
   const streakMap = new Map(streaks?.map((s) => [s.user_id, s]) ?? []);
-
-  const rankingHistory = await getRankingHistory(params.id);
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -104,7 +106,7 @@ export default async function PollaDetailPage({ params }: Props) {
       </div>
 
       {/* Header card */}
-      <div className="rounded-2xl bg-[#0d3d1f] p-6 text-white shadow-lg">
+      <div className="rounded-2xl bg-primary-dark p-6 text-white shadow-lg">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <span className={`inline-block rounded-full px-2.5 py-0.5 text-[11px] font-semibold mb-2 ${STATUS_STYLE[polla.status] ?? 'bg-muted text-muted-foreground'}`}>
@@ -128,21 +130,21 @@ export default async function PollaDetailPage({ params }: Props) {
           <CopyInviteLink code={polla.code} />
         </div>
 
-        {/* Links de navegación */}
-        <div className="mt-3 flex flex-col gap-2">
+        {/* Links de navegación — fixture es la acción principal, especiales chip secundario */}
+        <div className="mt-3 space-y-2">
           <Link
             href={`/pollas/${params.id}/fixture`}
-            className="flex items-center justify-center gap-2 rounded-xl bg-white/10 px-4 py-2.5 text-sm font-semibold text-white hover:bg-white/20 transition-colors"
+            className="flex items-center justify-center gap-2 rounded-xl bg-white/15 px-4 py-3 text-sm font-bold text-white hover:bg-white/25 transition-colors"
           >
             <CalendarDays className="h-4 w-4" />
             Ver fixture y hacer predicciones
           </Link>
           <Link
             href={`/pollas/${params.id}/predicciones-especiales`}
-            className="flex items-center justify-center gap-2 rounded-xl bg-white/10 px-4 py-2.5 text-sm font-semibold text-white hover:bg-white/20 transition-colors"
+            className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-white/85 hover:bg-white/20 transition-colors"
           >
-            <Sparkles className="h-4 w-4" />
-            Predicciones especiales
+            <Sparkles className="h-3 w-3" />
+            Predicciones especiales del torneo
           </Link>
         </div>
       </div>
@@ -173,7 +175,7 @@ export default async function PollaDetailPage({ params }: Props) {
                     {isTop ? MEDALS[i] : <span className="text-sm font-bold text-muted-foreground">{i + 1}</span>}
                   </span>
                   {avatarUrl ? (
-                    <img src={avatarUrl} alt={m.alias} className="h-9 w-9 rounded-full flex-shrink-0" />
+                    <img src={avatarUrl} alt={m.alias} loading="lazy" decoding="async" className="h-9 w-9 rounded-full flex-shrink-0" />
                   ) : (
                     <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary flex-shrink-0">
                       {initials}

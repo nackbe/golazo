@@ -48,14 +48,32 @@ export default async function PollasPage() {
   const adminAliasById = new Map((adminProfiles ?? []).map((p) => [p.id, p.alias]));
 
   // Batch lookup: match counts per tournament (total + finished)
-  // Se hace por torneo individual para evitar el límite de 1000 registros de Supabase
+  // Antes: 2 queries × N tournaments en loop secuencial (P95 ~6s con 10 pollas).
+  // Ahora: 2 queries totales — agregamos en JS.
   const matchStatsByTournament = new Map<string, { total: number; finished: number }>();
-  for (const tid of tournamentIds) {
-    const [{ count: total }, { count: finished }] = await Promise.all([
-      supabase.from('matches').select('*', { count: 'exact', head: true }).eq('tournament_id', tid),
-      supabase.from('matches').select('*', { count: 'exact', head: true }).eq('tournament_id', tid).in('status', ['FT', 'AET', 'AFT', 'PEN']),
+  if (tournamentIds.length > 0) {
+    const [{ data: allMatches }, { data: finishedMatches }] = await Promise.all([
+      supabase
+        .from('matches')
+        .select('tournament_id')
+        .in('tournament_id', tournamentIds),
+      supabase
+        .from('matches')
+        .select('tournament_id')
+        .in('tournament_id', tournamentIds)
+        .in('status', ['FT', 'AET', 'AFT', 'PEN']),
     ]);
-    matchStatsByTournament.set(tid, { total: total || 0, finished: finished || 0 });
+    for (const tid of tournamentIds) {
+      matchStatsByTournament.set(tid, { total: 0, finished: 0 });
+    }
+    for (const m of allMatches || []) {
+      const s = matchStatsByTournament.get(m.tournament_id);
+      if (s) s.total++;
+    }
+    for (const m of finishedMatches || []) {
+      const s = matchStatsByTournament.get(m.tournament_id);
+      if (s) s.finished++;
+    }
   }
 
   const allPollas = [
@@ -77,7 +95,7 @@ export default async function PollasPage() {
     <div className="space-y-6">
 
       {/* Hero */}
-      <div className="relative overflow-hidden rounded-2xl bg-[#0d3d1f] px-4 sm:px-6 py-6 sm:py-8 text-white shadow-lg">
+      <div className="relative overflow-hidden rounded-2xl bg-primary-dark px-4 sm:px-6 py-6 sm:py-8 text-white shadow-lg">
         <div className="relative z-10">
           <p className="text-sm font-medium text-white/60 uppercase tracking-wider mb-1">Bienvenido</p>
           <h1 className="text-3xl font-black mb-1">Mis Pollas ⚽</h1>

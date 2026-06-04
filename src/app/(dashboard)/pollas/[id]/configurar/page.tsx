@@ -30,26 +30,26 @@ export default async function ConfigurarPollaPage({ params }: Props) {
   if (!polla) notFound();
   if (polla.admin_id !== user.id) redirect(`/pollas/${params.id}`);
 
-  const { data: pendingMembers } = await supabase
-    .from('polla_members')
-    .select('id, alias, created_at')
-    .eq('polla_id', params.id)
-    .eq('status', 'pending')
-    .order('created_at', { ascending: true });
-
-  // Cargar partidos del torneo si hay uno seleccionado
-  let matches: any[] = [];
-  let matchesCount = 0;
-  if (polla.tournament_id) {
-    const { data, count } = await supabase
-      .from('matches')
-      .select('id, scheduled_at, round, venue, status, home_team:home_team_id(name), away_team:away_team_id(name)', { count: 'exact' })
-      .eq('tournament_id', polla.tournament_id)
-      .order('scheduled_at', { ascending: true })
-      .limit(6);
-    matches = data || [];
-    matchesCount = count || 0;
-  }
+  // Paralelizar queries dependientes de polla
+  const [pendingMembersRes, matchesRes] = await Promise.all([
+    supabase
+      .from('polla_members')
+      .select('id, alias, created_at')
+      .eq('polla_id', params.id)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: true }),
+    polla.tournament_id
+      ? supabase
+          .from('matches')
+          .select('id, scheduled_at, round, venue, status, home_team:home_team_id(name), away_team:away_team_id(name)', { count: 'exact' })
+          .eq('tournament_id', polla.tournament_id)
+          .order('scheduled_at', { ascending: true })
+          .limit(6)
+      : Promise.resolve({ data: [] as any[], count: 0 }),
+  ]);
+  const pendingMembers = pendingMembersRes.data;
+  const matches = (matchesRes.data as any[]) || [];
+  const matchesCount = (matchesRes as any).count || 0;
 
   const pollaProp = {
     id: polla.id,
@@ -94,13 +94,29 @@ export default async function ConfigurarPollaPage({ params }: Props) {
         <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10">
           <Settings className="h-6 w-6 text-primary" />
         </div>
-        <div>
-          <h1 className="text-xl font-black">Configurar polla</h1>
-          <p className="text-sm text-muted-foreground">{polla.name}</p>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-xl font-bold">Configurar polla</h1>
+          <p className="text-sm text-muted-foreground truncate">{polla.name}</p>
         </div>
+        {pendingMembers && pendingMembers.length > 0 && (
+          <a
+            href="#pending-members"
+            className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1.5 text-xs font-bold text-amber-800 hover:bg-amber-200 transition-colors"
+          >
+            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-amber-600 text-white text-[10px]">
+              {pendingMembers.length}
+            </span>
+            Pendientes
+          </a>
+        )}
       </div>
 
-      <PollaSettingsForm key={polla.status} polla={pollaProp} />
+      {/* Solicitudes pendientes — primer bloque, time-sensitive */}
+      {pendingMembers && pendingMembers.length > 0 && (
+        <div id="pending-members">
+          <PendingMembersList pollaId={params.id} members={pendingMembers} />
+        </div>
+      )}
 
       {/* Selección de torneo */}
       {(polla.status === 'draft' || polla.status === 'open') && (
@@ -288,9 +304,8 @@ export default async function ConfigurarPollaPage({ params }: Props) {
         </div>
       )}
 
-      {pendingMembers && pendingMembers.length > 0 && (
-        <PendingMembersList pollaId={params.id} members={pendingMembers} />
-      )}
+      {/* Configuración avanzada — reglas, puntos, comodines (al final, no es prerequisite) */}
+      <PollaSettingsForm key={polla.status} polla={pollaProp} />
 
       {/* Borrar polla */}
       <DeletePollaSection pollaId={polla.id} pollaName={polla.name} />

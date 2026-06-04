@@ -25,30 +25,34 @@ export default async function PrediccionPage({ params }: Props) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/login');
 
-  const { data: polla } = await supabase
-    .from('pollas')
-    .select('id, name, admin_id, tournament_id, bet_deadline_minutes, status, wildcards, point_system')
-    .eq('id', params.id)
-    .single();
+  // Paralelizar polla + membership + match (3 RTT → 1)
+  const [pollaRes, membershipRes, matchRes] = await Promise.all([
+    supabase
+      .from('pollas')
+      .select('id, name, admin_id, tournament_id, bet_deadline_minutes, status, wildcards, point_system')
+      .eq('id', params.id)
+      .single(),
+    supabase
+      .from('polla_members')
+      .select('status')
+      .eq('polla_id', params.id)
+      .eq('user_id', user.id)
+      .maybeSingle(),
+    supabase
+      .from('matches')
+      .select('*, home_team:teams!matches_home_team_id_fkey(*), away_team:teams!matches_away_team_id_fkey(*)')
+      .eq('id', params.matchId)
+      .single(),
+  ]);
+  const polla = pollaRes.data;
+  const membership = membershipRes.data;
+  const match = matchRes.data;
 
   if (!polla) notFound();
-
-  const { data: membership } = await supabase
-    .from('polla_members')
-    .select('status')
-    .eq('polla_id', params.id)
-    .eq('user_id', user.id)
-    .single();
 
   const isAdmin = polla.admin_id === user.id;
   const isMember = membership?.status === 'approved';
   if (!isAdmin && !isMember) redirect('/pollas');
-
-  const { data: match } = await supabase
-    .from('matches')
-    .select('*, home_team:teams!matches_home_team_id_fkey(*), away_team:teams!matches_away_team_id_fkey(*)')
-    .eq('id', params.matchId)
-    .single();
 
   if (!match) notFound();
 
@@ -57,9 +61,8 @@ export default async function PrediccionPage({ params }: Props) {
     redirect(`/pollas/${params.id}/fixture`);
   }
 
-  // Verificar si el plazo cerró (server-side)
-  const { data: nowData } = await supabase.rpc('get_server_time');
-  const serverNow = new Date(nowData || new Date().toISOString());
+  // Deadline server-side. Server clock confiable, no necesita RPC extra.
+  const serverNow = new Date();
   const deadline = new Date(match.scheduled_at);
   deadline.setMinutes(deadline.getMinutes() - (polla.bet_deadline_minutes || 5));
   const isOpen = serverNow < deadline;
@@ -300,6 +303,7 @@ export default async function PrediccionPage({ params }: Props) {
           isOpen={isOpen}
           existingPrediction={prediction}
           wildcardsAvailable={wildcardsAvailable}
+          deadlineISO={deadline.toISOString()}
         />
       )}
 

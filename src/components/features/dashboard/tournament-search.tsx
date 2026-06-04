@@ -158,9 +158,10 @@ export function TournamentSearch({ pollaId, onSelect, currentTournament }: Props
           <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
         )}
       </div>
+      <p className="mt-1 text-xs text-muted-foreground">Escribí al menos 3 letras para buscar.</p>
 
-      {/* Torneos populares — rápido acceso */}
-      <div className="mt-2 flex flex-wrap gap-1.5">
+      {/* Torneos populares — scroll horizontal en móvil para evitar wrap */}
+      <div className="mt-2 flex gap-1.5 overflow-x-auto -mx-1 px-1 pb-1 scrollbar-thin">
           {POPULAR_TOURNAMENTS.map((t) => (
             <button
               key={t.query}
@@ -171,7 +172,7 @@ export function TournamentSearch({ pollaId, onSelect, currentTournament }: Props
                 search(t.query);
                 setOpen(true);
               }}
-              className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/40 px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className="inline-flex flex-shrink-0 items-center gap-1 rounded-full border border-border/60 bg-muted/40 px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <Star className="h-3 w-3" />
               {t.label}

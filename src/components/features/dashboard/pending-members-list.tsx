@@ -78,7 +78,7 @@ export function PendingMembersList({ pollaId, members: initial }: { pollaId: str
                 onClick={() => handleReject(m.id)}
                 disabled={pending === m.id}
                 title="Rechazar"
-                className="flex h-8 w-8 items-center justify-center rounded-xl border border-destructive/30 bg-destructive/10 text-destructive transition-colors hover:bg-destructive/20 disabled:opacity-50"
+                className="flex h-11 w-11 items-center justify-center rounded-xl border border-destructive/30 bg-destructive/10 text-destructive transition-colors hover:bg-destructive/20 disabled:opacity-50"
               >
                 {pending === m.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
               </button>
@@ -86,7 +86,7 @@ export function PendingMembersList({ pollaId, members: initial }: { pollaId: str
                 onClick={() => handleApprove(m.id)}
                 disabled={pending === m.id}
                 title="Aprobar"
-                className="flex h-8 w-8 items-center justify-center rounded-xl border border-green-500/30 bg-green-500/10 text-green-700 transition-colors hover:bg-green-500/20 disabled:opacity-50"
+                className="flex h-11 w-11 items-center justify-center rounded-xl border border-green-500/30 bg-green-500/10 text-green-700 transition-colors hover:bg-green-500/20 disabled:opacity-50"
               >
                 {pending === m.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
               </button>

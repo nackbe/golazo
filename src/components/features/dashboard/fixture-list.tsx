@@ -64,7 +64,25 @@ interface Props {
   showingAll?: boolean;
 }
 
-type StatusFilter = 'all' | 'open' | 'closed' | 'missing' | 'predicted';
+type StatusFilter = 'all' | 'live' | 'today' | 'week' | 'open' | 'closed' | 'missing' | 'predicted';
+
+const LIVE_STATUSES = new Set(['1H', 'HT', '2H', 'ET', 'BT', 'P', 'PEN', 'LIVE', 'INT', 'SUSP']);
+
+function isSameDay(a: Date, b: Date): boolean {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+function isThisWeek(date: Date, now: Date): boolean {
+  // Lunes a Domingo de la semana actual
+  const day = now.getDay(); // 0=Dom, 1=Lun...
+  const diffToMonday = (day + 6) % 7;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - diffToMonday);
+  monday.setHours(0, 0, 0, 0);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 7);
+  return date >= monday && date < sunday;
+}
 type SortBy = 'date-asc' | 'date-desc' | 'team' | 'round';
 
 function formatDate(iso: string) {
@@ -115,6 +133,9 @@ const MONTHS = [
 
 const STATUS_LABELS: Record<StatusFilter, string> = {
   all: 'Todos',
+  live: 'En vivo',
+  today: 'Hoy',
+  week: 'Esta semana',
   open: 'Por predecir',
   closed: 'Cerrado',
   missing: 'Sin predicción',
@@ -134,6 +155,8 @@ export function FixtureList({ pollaId, matches, predictions, betDeadlineMinutes,
   const [sortBy, setSortBy] = useState<SortBy>((searchParams.get('sort') as SortBy) || 'date-asc');
   const [showFilters, setShowFilters] = useState(searchParams.get('showFilters') === '1');
   const [showHelp, setShowHelp] = useState(false);
+  // Now estable por render — re-evalúa solo si statusFilter cambia entre live/today/week
+  const nowRef = useMemo(() => new Date(), [statusFilter]);
 
   // Sincronizar filtros con URL query params
   const updateUrl = useCallback((updates: Record<string, string | null>) => {
@@ -212,6 +235,9 @@ export function FixtureList({ pollaId, matches, predictions, betDeadlineMinutes,
       if (monthFilter !== 'all' && getMonth(match.scheduled_at) !== Number(monthFilter)) return false;
 
       // Filtro por estado
+      if (statusFilter === 'live') return LIVE_STATUSES.has(match.status);
+      if (statusFilter === 'today') return isSameDay(new Date(match.scheduled_at), nowRef);
+      if (statusFilter === 'week') return isThisWeek(new Date(match.scheduled_at), nowRef);
       if (statusFilter === 'open') return open;
       if (statusFilter === 'closed') return !open;
       if (statusFilter === 'missing') return open && !hasPrediction;
@@ -219,7 +245,7 @@ export function FixtureList({ pollaId, matches, predictions, betDeadlineMinutes,
 
       return true;
     });
-  }, [matches, predByMatch, betDeadlineMinutes, searchQuery, yearFilter, monthFilter, statusFilter]);
+  }, [matches, predByMatch, betDeadlineMinutes, searchQuery, yearFilter, monthFilter, statusFilter, nowRef]);
 
   // Ordenar
   const sorted = useMemo(() => {
@@ -300,7 +326,7 @@ export function FixtureList({ pollaId, matches, predictions, betDeadlineMinutes,
         {/* Col 1: Equipo local — logo + nombre apilados */}
         <div className={`flex flex-col items-center gap-1 text-center ${homeWon ? 'text-green-700' : isDraw ? 'text-amber-700' : ''}`}>
           {match.home_team?.logo_url ? (
-            <img src={match.home_team.logo_url} alt="" className="h-8 w-8 object-contain" />
+            <img src={match.home_team.logo_url} alt="" loading="lazy" decoding="async" className="h-8 w-8 object-contain" />
           ) : (
             <div className="h-8 w-8 rounded-full bg-muted" />
           )}
@@ -318,7 +344,7 @@ export function FixtureList({ pollaId, matches, predictions, betDeadlineMinutes,
                 {match.home_goals ?? '-'} : {match.away_goals ?? '-'}
               </span>
               {hasPenalties && (
-                <span className="text-[10px] text-muted-foreground">
+                <span className="text-xs text-muted-foreground">
                   (P) {match.home_penalty_goals} - {match.away_penalty_goals}
                 </span>
               )}
@@ -329,17 +355,17 @@ export function FixtureList({ pollaId, matches, predictions, betDeadlineMinutes,
             <span className="text-sm font-bold text-muted-foreground">vs</span>
           )}
           {isLive && (
-            <span className="text-[10px] font-bold text-red-500">EN VIVO</span>
+            <span className="text-xs font-bold text-red-500">EN VIVO</span>
           )}
           {isDraw && !hasPenalties && isFinished && (
-            <span className="text-[10px] font-bold text-amber-600">Empate</span>
+            <span className="text-xs font-bold text-amber-600">Empate</span>
           )}
-          <div className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
+          <div className="flex items-center gap-0.5 text-xs text-muted-foreground">
             <Clock className="h-2.5 w-2.5" />
             {formatTime(match.scheduled_at)}
           </div>
           {match.round && (
-            <span className="text-[10px] text-muted-foreground text-center leading-tight max-w-[90px] break-words">{match.round}</span>
+            <span className="text-xs text-muted-foreground text-center leading-tight max-w-[90px] break-words">{match.round}</span>
           )}
           {/* Badge de predicción + resultado */}
           <div className="mt-1 flex flex-col items-center gap-1">
@@ -358,25 +384,25 @@ export function FixtureList({ pollaId, matches, predictions, betDeadlineMinutes,
                 No iniciada
               </span>
             ) : open ? (
-              <span className="inline-flex items-center rounded-lg bg-[#0d3d1f] text-white text-xs px-3 py-1 font-semibold">
+              <span className="inline-flex items-center rounded-lg bg-primary-dark text-white text-xs px-3 py-1 font-semibold">
                 Predecir
               </span>
             ) : (
-              <span className="rounded-md bg-muted px-2 py-1 text-[10px] text-muted-foreground">
+              <span className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">
                 Cerrado
               </span>
             )}
             {isFinished && pred && (
               pred.home_goals === match.home_goals && pred.away_goals === match.away_goals ? (
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500 px-2 py-0.5 text-[10px] font-bold text-white">
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500 px-2 py-0.5 text-xs font-bold text-white">
                   🎯 Exacto{pred.points != null && <span className="opacity-90">· +{pred.points}pts</span>}
                 </span>
               ) : (pred.points ?? 0) > 0 ? (
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-700">
                   ✓ Acertaste{pred.points != null && <span className="opacity-75">· +{pred.points}pts</span>}
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-600">
+                <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-bold text-red-600">
                   ✗ Fallaste{pred.points != null && <span className="opacity-75">· {pred.points}pts</span>}
                 </span>
               )
@@ -387,7 +413,7 @@ export function FixtureList({ pollaId, matches, predictions, betDeadlineMinutes,
         {/* Col 3: Equipo visitante — logo + nombre apilados */}
         <div className={`flex flex-col items-center gap-1 text-center ${awayWon ? 'text-green-700' : isDraw ? 'text-amber-700' : ''}`}>
           {match.away_team?.logo_url ? (
-            <img src={match.away_team.logo_url} alt="" className="h-8 w-8 object-contain" />
+            <img src={match.away_team.logo_url} alt="" loading="lazy" decoding="async" className="h-8 w-8 object-contain" />
           ) : (
             <div className="h-8 w-8 rounded-full bg-muted" />
           )}
@@ -439,7 +465,7 @@ export function FixtureList({ pollaId, matches, predictions, betDeadlineMinutes,
                       ))}
                   </div>
                   {(pointSystem as Record<string, number>)?.unique_exact_bonus > 0 && (
-                    <div className="rounded-lg bg-amber-50 border border-amber-200 px-2 py-1.5 text-[11px] text-amber-700">
+                    <div className="rounded-lg bg-amber-50 border border-amber-200 px-2 py-1.5 text-xs text-amber-700">
                       🎯 Si sos el <strong>único</strong> que acierta el marcador exacto, tus puntos de exacto se multiplican por <strong>{(pointSystem as Record<string, number>).unique_exact_bonus}×</strong>.
                     </div>
                   )}
@@ -456,22 +482,22 @@ export function FixtureList({ pollaId, matches, predictions, betDeadlineMinutes,
           <div className="flex flex-col items-center rounded-xl border bg-card py-1.5 px-2">
             <Calendar className="h-3.5 w-3.5 text-slate-500 mb-0.5" />
             <span className="text-base font-bold leading-none text-slate-700">{counts.total}</span>
-            <span className="text-[10px] text-muted-foreground mt-0.5">Total</span>
+            <span className="text-xs text-muted-foreground mt-0.5">Total</span>
           </div>
           <div className="flex flex-col items-center rounded-xl border bg-red-50 py-1.5 px-2">
             <Lock className="h-3.5 w-3.5 text-red-500 mb-0.5" />
             <span className="text-base font-bold leading-none text-red-700">{counts.closed}</span>
-            <span className="text-[10px] text-red-600/70 mt-0.5">Cerrados</span>
+            <span className="text-xs text-red-600/70 mt-0.5">Cerrados</span>
           </div>
           <div className="flex flex-col items-center rounded-xl border bg-amber-50 py-1.5 px-2">
             <AlertCircle className="h-3.5 w-3.5 text-amber-500 mb-0.5" />
             <span className="text-base font-bold leading-none text-amber-700">{counts.missing}</span>
-            <span className="text-[10px] text-amber-600/70 mt-0.5">Sin predicción</span>
+            <span className="text-xs text-amber-600/70 mt-0.5">Sin predicción</span>
           </div>
           <div className="flex flex-col items-center rounded-xl border bg-emerald-50 py-1.5 px-2">
             <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 mb-0.5" />
             <span className="text-base font-bold leading-none text-emerald-700">{counts.predicted}</span>
-            <span className="text-[10px] text-emerald-600/70 mt-0.5">Predichos</span>
+            <span className="text-xs text-emerald-600/70 mt-0.5">Predichos</span>
           </div>
         </div>
       )}
@@ -499,7 +525,7 @@ export function FixtureList({ pollaId, matches, predictions, betDeadlineMinutes,
 
         {/* Filtros de estado siempre visibles */}
         <div className="flex items-center gap-1.5 flex-wrap">
-          {(['all', 'open', 'missing', 'predicted', 'closed'] as StatusFilter[]).map((key) => (
+          {(['all', 'live', 'today', 'week', 'open', 'missing', 'predicted', 'closed'] as StatusFilter[]).map((key) => (
             <button
               key={key}
               onClick={() => {
@@ -533,7 +559,7 @@ export function FixtureList({ pollaId, matches, predictions, betDeadlineMinutes,
               <Filter className="h-3 w-3" />
               Más filtros
               {(yearFilter !== 'all' || monthFilter !== 'all') && (
-                <span className="ml-0.5 rounded-full bg-primary px-1 py-0.5 text-[10px] font-bold text-white">
+                <span className="ml-0.5 rounded-full bg-primary px-1 py-0.5 text-xs font-bold text-white">
                   {(yearFilter !== 'all' ? 1 : 0) + (monthFilter !== 'all' ? 1 : 0)}
                 </span>
               )}

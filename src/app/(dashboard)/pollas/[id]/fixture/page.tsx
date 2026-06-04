@@ -15,21 +15,24 @@ export default async function FixturePage({ params, searchParams }: Props) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/login');
 
-  const { data: polla } = await supabase
-    .from('pollas')
-    .select('*, tournaments(name)')
-    .eq('id', params.id)
-    .single();
+  // Paralelizar polla + membership (3 RTT → 2)
+  const [pollaRes, membershipRes] = await Promise.all([
+    supabase
+      .from('pollas')
+      .select('*, tournaments(name)')
+      .eq('id', params.id)
+      .single(),
+    supabase
+      .from('polla_members')
+      .select('status')
+      .eq('polla_id', params.id)
+      .eq('user_id', user.id)
+      .maybeSingle(),
+  ]);
+  const polla = pollaRes.data;
+  const membership = membershipRes.data;
 
   if (!polla) notFound();
-
-  // Verificar membresía
-  const { data: membership } = await supabase
-    .from('polla_members')
-    .select('status')
-    .eq('polla_id', params.id)
-    .eq('user_id', user.id)
-    .single();
 
   const isAdmin = polla.admin_id === user.id;
   const isMember = membership?.status === 'approved';
@@ -37,36 +40,24 @@ export default async function FixturePage({ params, searchParams }: Props) {
 
   const showingAll = searchParams.all === '1';
 
-  // Contar total de partidos del torneo (siempre, para mostrar el mensaje)
-  const { count: totalCount } = await supabase
-    .from('matches')
-    .select('*', { count: 'exact', head: true })
-    .eq('tournament_id', polla.tournament_id);
-
-  // Cargar partidos del torneo
-  // Por defecto: solo los 200 más recientes (futuros + pasados recientes)
-  // Con ?all=1: todos los partidos
+  // Cargar todo lo que depende del torneo en paralelo
   let matchesQuery = supabase
     .from('matches')
     .select('*, home_team:teams!matches_home_team_id_fkey(*), away_team:teams!matches_away_team_id_fkey(*)')
     .eq('tournament_id', polla.tournament_id);
 
   if (!showingAll) {
-    matchesQuery = matchesQuery
-      .order('scheduled_at', { ascending: false })
-      .limit(200);
+    matchesQuery = matchesQuery.order('scheduled_at', { ascending: false }).limit(200);
   } else {
-    matchesQuery = matchesQuery
-      .order('scheduled_at', { ascending: true });
+    matchesQuery = matchesQuery.order('scheduled_at', { ascending: true });
   }
 
-  const { data: matchesRaw } = await matchesQuery;
-
-  // Si traemos los últimos 200 (orden DESC), revertir para que queden ASC
-  const matches = showingAll ? (matchesRaw || []) : [...(matchesRaw || [])].reverse();
-
-  // Cargar predicciones del usuario + puntos obtenidos
-  const [{ data: rawPredictions }, { data: matchPoints }] = await Promise.all([
+  const [countRes, matchesRes, predictionsRes, matchPointsRes] = await Promise.all([
+    supabase
+      .from('matches')
+      .select('*', { count: 'exact', head: true })
+      .eq('tournament_id', polla.tournament_id),
+    matchesQuery,
     supabase
       .from('predictions')
       .select('match_id, home_goals, away_goals, wildcard_used')
@@ -78,6 +69,13 @@ export default async function FixturePage({ params, searchParams }: Props) {
       .eq('polla_id', params.id)
       .eq('user_id', user.id),
   ]);
+  const totalCount = countRes.count;
+  const matchesRaw = matchesRes.data;
+  const rawPredictions = predictionsRes.data;
+  const matchPoints = matchPointsRes.data;
+
+  // Si traemos los últimos 200 (orden DESC), revertir para que queden ASC
+  const matches = showingAll ? (matchesRaw || []) : [...(matchesRaw || [])].reverse();
 
   const pointsByMatch = new Map((matchPoints || []).map((mp) => [mp.match_id, mp.points]));
   const predictions = (rawPredictions || []).map((p) => ({

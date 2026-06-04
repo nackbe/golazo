@@ -15,7 +15,7 @@ export function DashboardHeader({ alias, avatarUrl, email }: DashboardHeaderProp
   const initials = displayName.slice(0, 2).toUpperCase();
 
   return (
-    <header className="bg-[#0d3d1f] text-white shadow-lg">
+    <header className="bg-primary-dark text-white shadow-lg">
       <div className="container mx-auto flex h-16 items-center justify-between px-4">
 
         <div className="flex items-center gap-8">

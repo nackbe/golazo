@@ -22,7 +22,7 @@ export default async function OnboardingPage() {
         {/* Logo */}
         <div className="mb-8 text-center">
           <span className="text-5xl">⚽</span>
-          <h2 className="mt-2 text-2xl font-black text-[#0d3d1f]">Golazo</h2>
+          <h2 className="mt-2 text-2xl font-black text-primary-dark">Golazo</h2>
         </div>
 
         <div className="rounded-2xl bg-card border border-border/50 shadow-sm p-6">

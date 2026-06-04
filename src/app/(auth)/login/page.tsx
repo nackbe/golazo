@@ -19,7 +19,7 @@ export default async function LoginPage() {
         {/* Logo */}
         <div className="mb-8 text-center">
           <span className="text-5xl">⚽</span>
-          <h1 className="mt-2 text-3xl font-black text-[#0d3d1f]">Golazo</h1>
+          <h1 className="mt-2 text-3xl font-black text-primary-dark">Golazo</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Predicciones deportivas con tus amigos
           </p>

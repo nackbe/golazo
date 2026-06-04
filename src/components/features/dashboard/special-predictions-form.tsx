@@ -210,7 +210,7 @@ export function SpecialPredictionsForm({ pollaId, teams, firstMatchDate, points,
       <Button
         type="submit"
         disabled={isPending}
-        className="w-full gap-1.5 bg-[#0d3d1f] hover:bg-[#0d3d1f]/90"
+        className="w-full gap-1.5 bg-primary-dark hover:bg-primary-dark/90"
       >
         {isPending ? (
           <>
