@@ -66,7 +66,19 @@ interface Props {
 
 type StatusFilter = 'all' | 'live' | 'today' | 'week' | 'open' | 'closed' | 'missing' | 'predicted';
 
-const LIVE_STATUSES = new Set(['1H', 'HT', '2H', 'ET', 'BT', 'P', 'PEN', 'LIVE', 'INT', 'SUSP']);
+// Status que indican partido realmente en curso. Excluye SUSP/INT que pueden
+// quedarse pegados si el sync falla.
+const LIVE_STATUSES = new Set(['1H', 'HT', '2H', 'ET', 'BT', 'P', 'PEN', 'LIVE']);
+// Ventana máxima desde scheduled_at para considerar "en vivo" — evita matches
+// con status pegado de sync fallido hace meses.
+const LIVE_WINDOW_MS = 4 * 60 * 60 * 1000;
+
+function isMatchLive(match: { status: string; scheduled_at: string }, now: Date): boolean {
+  if (!LIVE_STATUSES.has(match.status)) return false;
+  const scheduled = new Date(match.scheduled_at).getTime();
+  const nowMs = now.getTime();
+  return nowMs >= scheduled && nowMs - scheduled < LIVE_WINDOW_MS;
+}
 
 function isSameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
@@ -235,7 +247,7 @@ export function FixtureList({ pollaId, matches, predictions, betDeadlineMinutes,
       if (monthFilter !== 'all' && getMonth(match.scheduled_at) !== Number(monthFilter)) return false;
 
       // Filtro por estado
-      if (statusFilter === 'live') return LIVE_STATUSES.has(match.status);
+      if (statusFilter === 'live') return isMatchLive(match, nowRef);
       if (statusFilter === 'today') return isSameDay(new Date(match.scheduled_at), nowRef);
       if (statusFilter === 'week') return isThisWeek(new Date(match.scheduled_at), nowRef);
       if (statusFilter === 'open') return open;
