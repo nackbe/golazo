@@ -323,10 +323,13 @@ export async function selectTournament(formData: FormData) {
     tournamentId = inserted!.id;
   }
 
-  // Si cambió de torneo, borrar partidos del torneo anterior
-  if (oldPolla?.tournament_id && oldPolla.tournament_id !== tournamentId) {
-    await admin.from('matches').delete().eq('tournament_id', oldPolla.tournament_id);
-  }
+  // NUNCA borrar matches del torneo viejo: los torneos son compartidos por
+  // múltiples pollas y predictions.match_id tiene ON DELETE CASCADE.
+  // Borrar matches aquí cascadea predictions/match_points de pollas ajenas.
+  // (Bug observado 2026-06-12: una polla cambió de torneo y borró matches +
+  // predictions de las 7 pollas que compartían World Cup.)
+  // Los matches huérfanos del torneo viejo quedan sin afectar nada — el polla
+  // ya no los referencia porque tournament_id cambió.
 
   await supabase.from('pollas').update({ tournament_id: tournamentId }).eq('id', pollaId);
 
