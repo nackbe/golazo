@@ -96,6 +96,14 @@ async function recalcPolla(pollaId: string, pollaName: string) {
     return;
   }
 
+  // CRÍTICO: marcar partidos como calculados. Si no se hace, el cron
+  // los procesa cada 2 min indefinido → con N pollas y muchos partidos
+  // pasa de 30s → 504 Gateway Timeout (bug observado 2026-06-12).
+  const matchIdsToMark = Array.from(new Set(rows.map((r) => r.match_id)));
+  if (matchIdsToMark.length > 0) {
+    await admin.from('matches').update({ points_calculated: true }).in('id', matchIdsToMark);
+  }
+
   // Recalcular total_points por miembro vía RPC (más rápido que loop)
   const { error: rpcErr } = await (admin as any).rpc('recalculate_polla_totals', { p_polla_id: pollaId });
   if (rpcErr) {
