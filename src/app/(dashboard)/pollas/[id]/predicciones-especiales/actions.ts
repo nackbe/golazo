@@ -131,8 +131,16 @@ export async function saveSpecialPredictions(pollaId: string, formData: FormData
     return { error: 'Tenés que completar al menos una predicción.' };
   }
 
-  // Borrar predicciones anteriores del usuario para esta polla (permite editar)
-  await supabase.from('special_predictions').delete().eq('polla_id', pollaId).eq('user_id', user.id);
+  // Borrar predicciones anteriores del usuario para esta polla (permite editar).
+  // Usamos admin client porque RLS de special_predictions no tiene policy DELETE
+  // y el delete del usuario fallaba silencioso → insert duplicaba filas
+  // (bug observado en polla CNWFT9, 156 duplicados).
+  const { error: delError } = await admin
+    .from('special_predictions')
+    .delete()
+    .eq('polla_id', pollaId)
+    .eq('user_id', user.id);
+  if (delError) return { error: delError.message };
 
   const { error } = await supabase.from('special_predictions').insert(predictionsToInsert);
 
