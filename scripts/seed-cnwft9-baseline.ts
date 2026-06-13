@@ -64,7 +64,20 @@ async function main() {
     Object.entries(BASELINE).map(([k, v]) => [k.toLowerCase().trim(), v])
   );
 
-  const updates: Array<{ user_id: string; alias: string; bonus: number }> = [];
+  // Cargar specials existentes por usuario para descontarlos del bonus.
+  // Si el usuario debe quedar con `target` total, bonus = target − specials,
+  // porque total_points = bonus + match_points + specials. match_points = 0
+  // post-cascade. Sin descontar specials, ranking se infla.
+  const { data: spRows } = await admin
+    .from('special_predictions')
+    .select('user_id,points')
+    .eq('polla_id', polla.id);
+  const specialsByUser = new Map<string, number>();
+  for (const r of spRows ?? []) {
+    specialsByUser.set(r.user_id, (specialsByUser.get(r.user_id) ?? 0) + (r.points ?? 0));
+  }
+
+  const updates: Array<{ user_id: string; alias: string; bonus: number; target: number }> = [];
   const missing: string[] = [];
 
   for (const m of members ?? []) {
@@ -73,7 +86,9 @@ async function main() {
       missing.push(m.alias);
       continue;
     }
-    updates.push({ user_id: m.user_id, alias: m.alias, bonus: baselineMap.get(key)! });
+    const target = baselineMap.get(key)!;
+    const sp = specialsByUser.get(m.user_id) ?? 0;
+    updates.push({ user_id: m.user_id, alias: m.alias, target, bonus: target - sp });
   }
 
   if (missing.length > 0) {
@@ -112,7 +127,7 @@ async function main() {
       console.error(`  ❌ ${u.alias} (${u.bonus}): ${error.message}`);
       errors++;
     } else {
-      console.log(`  ✓ ${u.alias} → ${u.bonus} pts`);
+      console.log(`  ✓ ${u.alias} → target=${u.target} (bonus=${u.bonus})`);
     }
   }
 
