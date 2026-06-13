@@ -108,6 +108,16 @@ async function recalculateAllMemberTotals(pollaId: string) {
 async function recalculateMemberTotalPointsLegacy(pollaId: string, userId: string) {
   const admin = createAdminClient();
 
+  // Leer bonus_points (migración 0034) para preservar baselines manuales.
+  // Sin esto el fallback sobrescribiría total_points ignorando bonuses.
+  const { data: member } = await (admin as any)
+    .from('polla_members')
+    .select('bonus_points')
+    .eq('polla_id', pollaId)
+    .eq('user_id', userId)
+    .maybeSingle();
+  const bonus = (member as any)?.bonus_points ?? 0;
+
   const { data: matchPoints } = await admin
     .from('match_points')
     .select('points')
@@ -124,7 +134,7 @@ async function recalculateMemberTotalPointsLegacy(pollaId: string, userId: strin
 
   const specialTotal = (specialPoints || []).reduce((acc, r) => acc + (r.points || 0), 0);
 
-  const total = matchTotal + specialTotal;
+  const total = bonus + matchTotal + specialTotal;
 
   await admin
     .from('polla_members')
