@@ -566,6 +566,19 @@ export async function calculateSpecialPoints(pollaId: string) {
 
   const sps = getSpecialPointSystem(polla.special_point_system);
 
+  // Gate: solo procesar specials cuando el torneo esté terminado.
+  // Sin esto el cron recalcula specials cada 2 min con stats parciales —
+  // worst_team/top_scorer_team se mueven a medida que llegan FT y el ranking
+  // baila. Diseño: specials se evalúan al final, una sola vez.
+  const { count: pendingCount } = await admin
+    .from('matches')
+    .select('*', { count: 'exact', head: true })
+    .eq('tournament_id', polla.tournament_id)
+    .not('status', 'in', '(FT,AFT,CANC,ABD,AWD,WO)');
+  if (pendingCount && pendingCount > 0) {
+    return { skipped: true, reason: `Torneo en curso (${pendingCount} partidos pendientes)` };
+  }
+
   // 2. Obtener resultados reales del torneo
   const { data: results } = await admin
     .from('tournament_special_results')

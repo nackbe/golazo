@@ -64,18 +64,18 @@ async function main() {
     Object.entries(BASELINE).map(([k, v]) => [k.toLowerCase().trim(), v])
   );
 
-  // Cargar specials existentes por usuario para descontarlos del bonus.
-  // Si el usuario debe quedar con `target` total, bonus = target − specials,
-  // porque total_points = bonus + match_points + specials. match_points = 0
-  // post-cascade. Sin descontar specials, ranking se infla.
-  const { data: spRows } = await admin
+  // Zero out specials.points para esta polla. Decisión de diseño:
+  // los specials solo deben sumar al FINAL del torneo. Hasta entonces quedan
+  // congelados en 0 — las predicciones siguen guardadas pero sin puntos.
+  const { error: zeroErr } = await admin
     .from('special_predictions')
-    .select('user_id,points')
+    .update({ points: 0 })
     .eq('polla_id', polla.id);
-  const specialsByUser = new Map<string, number>();
-  for (const r of spRows ?? []) {
-    specialsByUser.set(r.user_id, (specialsByUser.get(r.user_id) ?? 0) + (r.points ?? 0));
+  if (zeroErr) {
+    console.error('Error zero-ing specials:', zeroErr.message);
+    process.exit(1);
   }
+  console.log('Specials zerados (se evalúan al fin del torneo).');
 
   const updates: Array<{ user_id: string; alias: string; bonus: number; target: number }> = [];
   const missing: string[] = [];
@@ -87,8 +87,8 @@ async function main() {
       continue;
     }
     const target = baselineMap.get(key)!;
-    const sp = specialsByUser.get(m.user_id) ?? 0;
-    updates.push({ user_id: m.user_id, alias: m.alias, target, bonus: target - sp });
+    // Specials = 0 ahora, no hay que descontar. bonus = target exacto.
+    updates.push({ user_id: m.user_id, alias: m.alias, target, bonus: target });
   }
 
   if (missing.length > 0) {
