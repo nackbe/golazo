@@ -429,15 +429,21 @@ export async function batchCalculateMatchPoints(pollaId: string): Promise<BatchR
 
   if (!polla) return { error: 'Polla no encontrada' };
 
+  // No filtramos por points_calculated. Ese flag es global por match y
+  // generaba una race condition entre pollas que comparten torneo: la primera
+  // en correr marcaba calc=true y las demás se saltaban el partido sin
+  // generar sus match_points (bug observado 2026-06-18, Uzbekistan-Colombia
+  // en KR2GGY). Procesamos todos los FT del torneo. UPSERT con onConflict
+  // (polla_id, user_id, match_id) hace el cálculo idempotente — recorrer 2 o
+  // 10 veces el mismo match produce el mismo match_points.
   const { data: matches } = await admin
     .from('matches')
     .select('id, home_goals, away_goals, round')
     .eq('tournament_id', polla.tournament_id)
-    .in('status', ['FT', 'AFT'])
-    .eq('points_calculated', false);
+    .in('status', ['FT', 'AFT']);
 
   if (!matches || matches.length === 0) {
-    return { skipped: true, reason: 'No hay partidos pendientes de cálculo' };
+    return { skipped: true, reason: 'No hay partidos terminados en este torneo' };
   }
 
   const matchIds = matches.map((m) => m.id);
