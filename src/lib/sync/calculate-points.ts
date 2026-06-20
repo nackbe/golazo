@@ -429,24 +429,45 @@ export async function batchCalculateMatchPoints(pollaId: string): Promise<BatchR
 
   if (!polla) return { error: 'Polla no encontrada' };
 
-  // No filtramos por points_calculated. Ese flag es global por match y
-  // generaba una race condition entre pollas que comparten torneo: la primera
-  // en correr marcaba calc=true y las demás se saltaban el partido sin
-  // generar sus match_points (bug observado 2026-06-18, Uzbekistan-Colombia
-  // en KR2GGY). Procesamos todos los FT del torneo. UPSERT con onConflict
-  // (polla_id, user_id, match_id) hace el cálculo idempotente — recorrer 2 o
-  // 10 veces el mismo match produce el mismo match_points.
-  const { data: matches } = await admin
+  // ESTRATEGIA Z: usar match_points como flag per-polla.
+  // El flag matches.points_calculated es global → race entre pollas
+  // (bug 2026-06-18 KR2GGY/Uzb-Col). Quitar el filtro sin más reprocesaba
+  // TODO cada cron → 504 timeout + ranking_history horizontal porque
+  // recordRankingHistory recibía el total ya consolidado de N matches.
+  //
+  // Solución: solo procesar matches que esta polla NO tenga aún en
+  // match_points. Cada polla actúa sobre su propia "huella" → cero race
+  // entre pollas, cero reprocesamiento, snapshots correctos.
+  const { data: allFtMatches } = await admin
     .from('matches')
-    .select('id, home_goals, away_goals, round')
+    .select('id, home_goals, away_goals, round, scheduled_at')
     .eq('tournament_id', polla.tournament_id)
-    .in('status', ['FT', 'AFT']);
+    .in('status', ['FT', 'AFT'])
+    .order('scheduled_at', { ascending: true });
 
-  if (!matches || matches.length === 0) {
+  if (!allFtMatches || allFtMatches.length === 0) {
     return { skipped: true, reason: 'No hay partidos terminados en este torneo' };
   }
 
+  const { data: existingMp } = await admin
+    .from('match_points')
+    .select('match_id')
+    .eq('polla_id', pollaId);
+  const alreadyDone = new Set((existingMp || []).map((r) => r.match_id));
+
+  const matches = allFtMatches.filter((m) => !alreadyDone.has(m.id));
+
+  if (matches.length === 0) {
+    // Asegurar flag global true para los matches FT (en caso de drift)
+    await admin
+      .from('matches')
+      .update({ points_calculated: true })
+      .in('id', allFtMatches.map((m) => m.id));
+    return { skipped: true, reason: 'Polla ya tiene match_points para todos los FT' };
+  }
+
   const matchIds = matches.map((m) => m.id);
+  const ps = getPointSystem(polla.point_system);
 
   const { data: predictions } = await admin
     .from('predictions')
@@ -454,33 +475,10 @@ export async function batchCalculateMatchPoints(pollaId: string): Promise<BatchR
     .eq('polla_id', pollaId)
     .in('match_id', matchIds);
 
-  const ps = getPointSystem(polla.point_system);
-
-  // Pre-calcular predicciones exactas por match para bonus "único y exacto"
-  const exactCountByMatch = new Map<string, { userId: string; predId: string }[]>();
-  for (const pred of predictions || []) {
-    const match = matches.find((m) => m.id === pred.match_id);
-    if (!match || match.home_goals === null || match.away_goals === null) continue;
-    if (match.home_goals === pred.home_goals && match.away_goals === pred.away_goals) {
-      if (!exactCountByMatch.has(pred.match_id)) exactCountByMatch.set(pred.match_id, []);
-      exactCountByMatch.get(pred.match_id)!.push({ userId: pred.user_id, predId: pred.id });
-    }
-  }
-  const uniqueExactBonusByMatch = new Map<string, string>();
-  if (ps.unique_exact_bonus > 0) {
-    for (const [matchId, exacts] of Array.from(exactCountByMatch.entries())) {
-      if (exacts.length === 1) uniqueExactBonusByMatch.set(matchId, exacts[0].userId);
-    }
-  }
-
-  const matchPointsToUpsert: Array<{
-    polla_id: string;
-    user_id: string;
-    match_id: string;
-    points: number;
-  }> = [];
-
-  // Acumular contextos para batch de badges
+  // Procesar match a match en orden cronológico:
+  // - upsert match_points del match actual
+  // - recalc totales (refleja todos los match_points hasta este momento)
+  // - recordRankingHistory (snapshot incremental correcto, no horizontal)
   const badgeContexts: Array<{
     userId: string;
     exact: boolean;
@@ -488,59 +486,81 @@ export async function batchCalculateMatchPoints(pollaId: string): Promise<BatchR
     wildcardUsed: string | null;
     isFinal: boolean;
   }> = [];
+  let totalRowsUpserted = 0;
 
-  for (const pred of predictions || []) {
-    const match = matches.find((m) => m.id === pred.match_id);
-    if (!match || match.home_goals === null || match.away_goals === null) continue;
+  for (const match of matches) {
+    if (match.home_goals === null || match.away_goals === null) {
+      // Match FT sin marcador (extraño); marcamos flag y seguimos
+      await admin.from('matches').update({ points_calculated: true }).eq('id', match.id);
+      continue;
+    }
 
+    const matchPreds = (predictions || []).filter((p) => p.match_id === match.id);
     const realHome = match.home_goals;
     const realAway = match.away_goals;
-    const bonusUserId = uniqueExactBonusByMatch.get(pred.match_id);
-    const isUniqueExactWinner = bonusUserId === pred.user_id;
-    const points = scoreMatchPrediction({
-      realHome,
-      realAway,
-      predHome: pred.home_goals,
-      predAway: pred.away_goals,
-      ps,
-      wildcard: pred.wildcard_used as 'x2' | 'x3' | null,
-      uniqueExactMultiplier: isUniqueExactWinner ? ps.unique_exact_bonus : 1,
-    });
 
-    matchPointsToUpsert.push({
-      polla_id: pollaId,
-      user_id: pred.user_id,
-      match_id: pred.match_id,
-      points,
-    });
+    // unique exact bonus dentro de este match
+    const exactPreds = matchPreds.filter(
+      (p) => p.home_goals === realHome && p.away_goals === realAway
+    );
+    const uniqueWinnerId =
+      ps.unique_exact_bonus > 0 && exactPreds.length === 1 ? exactPreds[0].user_id : null;
 
-    // Acumular contexto para batch de badges (se procesa al final)
-    const badgeExact = realHome === pred.home_goals && realAway === pred.away_goals;
-    const badgeCorrectResult = Math.sign(realHome - realAway) === Math.sign(pred.home_goals - pred.away_goals);
-    const badgeMatch = matches.find((x) => x.id === pred.match_id);
-    const badgeIsFinal = badgeMatch?.round ? (badgeMatch.round.toLowerCase() === 'final' || badgeMatch.round.toLowerCase() === 'grand final') : false;
-    badgeContexts.push({
-      userId: pred.user_id,
-      exact: badgeExact,
-      correctResult: badgeCorrectResult,
-      wildcardUsed: pred.wildcard_used,
-      isFinal: badgeIsFinal,
-    });
+    if (matchPreds.length > 0) {
+      const rows = matchPreds.map((pred) => {
+        const points = scoreMatchPrediction({
+          realHome,
+          realAway,
+          predHome: pred.home_goals,
+          predAway: pred.away_goals,
+          ps,
+          wildcard: pred.wildcard_used as 'x2' | 'x3' | null,
+          uniqueExactMultiplier:
+            pred.user_id === uniqueWinnerId ? ps.unique_exact_bonus : 1,
+        });
+
+        // Acumular contexto de badges para procesar al final
+        const isExact = pred.home_goals === realHome && pred.away_goals === realAway;
+        const isCorrectResult =
+          Math.sign(realHome - realAway) === Math.sign(pred.home_goals - pred.away_goals);
+        const isFinal = match.round
+          ? match.round.toLowerCase() === 'final' || match.round.toLowerCase() === 'grand final'
+          : false;
+        badgeContexts.push({
+          userId: pred.user_id,
+          exact: isExact,
+          correctResult: isCorrectResult,
+          wildcardUsed: pred.wildcard_used,
+          isFinal,
+        });
+
+        return {
+          polla_id: pollaId,
+          user_id: pred.user_id,
+          match_id: match.id,
+          points,
+        };
+      });
+
+      const { error: upErr } = await admin
+        .from('match_points')
+        .upsert(rows, { onConflict: 'polla_id, user_id, match_id' });
+      if (upErr) {
+        console.error('Error upsert match_points para match', match.id, upErr);
+      } else {
+        totalRowsUpserted += rows.length;
+      }
+
+      // Recalc + history INCREMENTAL — snapshot tras este match
+      await recalculateAllMemberTotals(pollaId);
+      await recordRankingHistory(pollaId, match.id);
+    }
+
+    // Marcar el match como procesado (flag global, igual idempotente)
+    await admin.from('matches').update({ points_calculated: true }).eq('id', match.id);
   }
 
-  if (matchPointsToUpsert.length > 0) {
-    const { error } = await admin
-      .from('match_points')
-      .upsert(matchPointsToUpsert, { onConflict: 'polla_id, user_id, match_id' });
-    if (error) console.error('Error upsert batch match_points:', error);
-  }
-
-  await admin
-    .from('matches')
-    .update({ points_calculated: true })
-    .in('id', matchIds);
-
-  // Procesar badges en batch (mucho más eficiente que uno por uno)
+  // Badges al final (batch)
   if (badgeContexts.length > 0) {
     try {
       await awardBadgesBatch(pollaId, badgeContexts);
@@ -549,16 +569,7 @@ export async function batchCalculateMatchPoints(pollaId: string): Promise<BatchR
     }
   }
 
-  // Recalcular totales de TODOS los miembros en batch (una sola query RPC)
-  await recalculateAllMemberTotals(pollaId);
-
-  // Registrar ranking history para CADA partido procesado
-  // Esto permite que la gráfica de evolución muestre el avance partido a partido
-  for (const match of matches) {
-    await recordRankingHistory(pollaId, match.id);
-  }
-
-  return { processed: matchPointsToUpsert.length, matches: matches.length };
+  return { processed: totalRowsUpserted, matches: matches.length };
 }
 
 /**
