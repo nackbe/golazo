@@ -5,6 +5,7 @@ import { PredictionForm } from '@/components/features/dashboard/prediction-form'
 import { BackToFixtureLink } from '@/components/features/dashboard/back-to-fixture-link';
 import { MatchPredictionsList } from '@/components/features/dashboard/match-predictions-list';
 import { scoreMatchPredictionWithBreakdown, getPointSystem } from '@/lib/scoring';
+import { isMatchTerminal } from '@/lib/match-status';
 
 function formatMatchDate(iso: string) {
   const d = new Date(iso);
@@ -112,7 +113,10 @@ export default async function PrediccionPage({ params }: Props) {
 
   // Estados del partido
   const matchStarted = !['NS', 'TBD', 'PST'].includes(match.status);
-  const isFinished = match.status === 'FT' || match.status === 'AFT';
+  // isFinished: incluye AET (después de tiempo extra) y PEN (penales).
+  // El marcador a 90 min (home_goals/away_goals) sigue siendo la predicción
+  // válida — ET/PEN no afectan scoring.
+  const isFinished = isMatchTerminal(match.status);
   const isLive = ['1H', 'HT', '2H', 'ET', 'P'].includes(match.status);
   let allPredictions: any[] = [];
   if (matchStarted) {

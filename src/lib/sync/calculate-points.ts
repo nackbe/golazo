@@ -8,6 +8,7 @@ import {
   type SpecialPointSystem,
 } from '@/lib/scoring';
 import { awardBadgesFromMatch, awardBadgesBatch } from '@/lib/badges';
+import { TERMINAL_MATCH_STATUSES } from '@/lib/match-status';
 
 /**
  * Registra el estado del ranking después de calcular puntos.
@@ -299,7 +300,7 @@ export async function updateTournamentSpecialResults(tournamentId: string) {
     .from('matches')
     .select('id, home_team_id, away_team_id, home_goals, away_goals, status, round')
     .eq('tournament_id', tournamentId)
-    .in('status', ['FT', 'AFT'])
+    .in('status', TERMINAL_MATCH_STATUSES as unknown as string[])
     .ilike('round', '%Final%');
 
   // Filtrar exactamente "Final" (no "Semi Final", "Quarter Final", etc.)
@@ -341,7 +342,7 @@ export async function updateTournamentSpecialResults(tournamentId: string) {
     .from('matches')
     .select('id, home_team_id, away_team_id, home_goals, away_goals, status, round')
     .eq('tournament_id', tournamentId)
-    .in('status', ['FT', 'AFT'])
+    .in('status', TERMINAL_MATCH_STATUSES as unknown as string[])
     .or('round.ilike.%3rd%,round.ilike.%Third%,round.ilike.%3er%');
 
   const thirdMatch = (thirdMatches || [])[0];
@@ -377,7 +378,7 @@ async function calculateTournamentStats(tournamentId: string) {
     .from('matches')
     .select('home_team_id, away_team_id, home_goals, away_goals, status')
     .eq('tournament_id', tournamentId)
-    .in('status', ['FT', 'AFT']);
+    .in('status', TERMINAL_MATCH_STATUSES as unknown as string[]);
 
   if (!matches || matches.length < 2) return; // Muy pocos partidos para stats significativas
 
@@ -442,7 +443,7 @@ export async function batchCalculateMatchPoints(pollaId: string): Promise<BatchR
     .from('matches')
     .select('id, home_goals, away_goals, round, scheduled_at')
     .eq('tournament_id', polla.tournament_id)
-    .in('status', ['FT', 'AFT'])
+    .in('status', TERMINAL_MATCH_STATUSES as unknown as string[])
     .order('scheduled_at', { ascending: true });
 
   if (!allFtMatches || allFtMatches.length === 0) {
@@ -601,7 +602,7 @@ export async function calculateSpecialPoints(pollaId: string) {
     .from('matches')
     .select('*', { count: 'exact', head: true })
     .eq('tournament_id', polla.tournament_id)
-    .not('status', 'in', '(FT,AFT,CANC,ABD,AWD,WO)');
+    .not('status', 'in', '(FT,AFT,AET,PEN,CANC,ABD,AWD,WO)');
   if (pendingCount && pendingCount > 0) {
     return { skipped: true, reason: `Torneo en curso (${pendingCount} partidos pendientes)` };
   }

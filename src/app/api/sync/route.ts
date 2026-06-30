@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { TERMINAL_MATCH_STATUSES } from '@/lib/match-status';
 import { getLiveFixtures, getFixturesByIds } from '@/services/api-football';
 import { batchCalculateMatchPoints, updateTournamentSpecialResults, calculateSpecialPoints } from '@/lib/sync/calculate-points';
 import { generateRandomPredictionsForMatch } from '@/lib/sync/random-predictions';
@@ -272,7 +273,7 @@ async function runSync() {
   const { data: pendingPollas } = await admin
     .from('matches')
     .select('tournament_id')
-    .in('status', ['FT', 'AFT'])
+    .in('status', TERMINAL_MATCH_STATUSES as unknown as string[])
     .eq('points_calculated', false);
 
   const pendingTournamentIds = new Set(
