@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { TERMINAL_MATCH_STATUSES } from '@/lib/match-status';
+import { TERMINAL_MATCH_STATUSES, isMatchTerminal } from '@/lib/match-status';
 import { getLiveFixtures, getFixturesByIds } from '@/services/api-football';
 import { batchCalculateMatchPoints, updateTournamentSpecialResults, calculateSpecialPoints } from '@/lib/sync/calculate-points';
 import { generateRandomPredictionsForMatch } from '@/lib/sync/random-predictions';
@@ -17,7 +17,8 @@ function statusIndex(status: string): number {
 }
 
 function canUpdate(from: string, to: string): boolean {
-  if (from === 'CANC' || from === 'FT' || from === 'AFT') return false;
+  // No actualizar si el match ya terminó (FT/AFT/AET/PEN) o fue cancelado.
+  if (from === 'CANC' || isMatchTerminal(from)) return false;
   const fromIdx = statusIndex(from);
   const toIdx = statusIndex(to);
   if (fromIdx === -1 || toIdx === -1) return true;
@@ -147,7 +148,7 @@ async function runSync() {
       results.errors.push(`Update live match ${match.id}: ${updateError.message}`);
     } else {
       results.synced++;
-      if (newStatus === 'FT' || newStatus === 'AFT') {
+      if (isMatchTerminal(newStatus)) {
         toCalculate.push(match.id);
       }
       if (match.tournament_id) allTournamentIds.add(match.tournament_id);
@@ -179,7 +180,7 @@ async function runSync() {
           results.errors.push(`Update disappeared match ${match.id}: ${updateError.message}`);
         } else {
           results.synced++;
-          if (newStatus === 'FT' || newStatus === 'AFT') {
+          if (isMatchTerminal(newStatus)) {
             toCalculate.push(match.id);
           }
           if (match.tournament_id) allTournamentIds.add(match.tournament_id);
@@ -215,7 +216,7 @@ async function runSync() {
           results.errors.push(`Update overdue match ${match.id}: ${updateError.message}`);
         } else {
           results.synced++;
-          if (newStatus === 'FT' || newStatus === 'AFT') {
+          if (isMatchTerminal(newStatus)) {
             toCalculate.push(match.id);
           }
           if (match.tournament_id) allTournamentIds.add(match.tournament_id);

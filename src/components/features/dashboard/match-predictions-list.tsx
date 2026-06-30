@@ -1,6 +1,7 @@
 'use client';
 
 import { Zap, Trophy, X } from 'lucide-react';
+import { isMatchTerminal } from '@/lib/match-status';
 
 interface Prediction {
   user_id: string;
@@ -30,7 +31,7 @@ export function MatchPredictionsList({
   homeGoals,
   awayGoals,
 }: Props) {
-  const isFinished = matchStatus === 'FT' || matchStatus === 'AFT';
+  const isFinished = isMatchTerminal(matchStatus);
   const sorted = [...predictions].sort((a, b) => (b.points ?? 0) - (a.points ?? 0));
 
   return (

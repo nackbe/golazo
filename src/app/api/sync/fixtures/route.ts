@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getFixtures } from '@/services/api-football';
 import { getSetting } from '@/lib/settings';
+import { isMatchTerminal } from '@/lib/match-status';
 
 export const runtime = 'edge';
 export const maxDuration = 30;
@@ -173,7 +174,7 @@ async function runFixtureSync() {
 
       const matchesToInsert = newFixtures.map((f: any) => {
         const apiStatus = f.fixture?.status?.short;
-        const isFinished = apiStatus === 'FT' || apiStatus === 'AFT';
+        const isFinished = isMatchTerminal(apiStatus);
         return {
           tournament_id: tournamentId,
           api_football_id: f.fixture?.id ?? null,

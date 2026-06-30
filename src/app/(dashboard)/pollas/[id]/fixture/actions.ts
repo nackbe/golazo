@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { getFixturesByIds } from '@/services/api-football';
 import { calculateMatchPoints, updateTournamentSpecialResults, calculateSpecialPoints } from '@/lib/sync/calculate-points';
 import { revalidatePath } from 'next/cache';
+import { TERMINAL_MATCH_STATUSES, isMatchTerminal } from '@/lib/match-status';
 
 const VALID_STATUS_PROGRESSION = [
   'NS', '1H', 'HT', '2H', 'ET', 'P', 'FT', 'AFT', 'CANC',
@@ -14,7 +15,7 @@ function statusIndex(status: string) {
 }
 
 function canUpdate(from: string, to: string) {
-  if (from === 'CANC' || from === 'FT' || from === 'AFT') return false;
+  if (from === 'CANC' || isMatchTerminal(from)) return false;
   const fromIdx = statusIndex(from);
   const toIdx = statusIndex(to);
   if (fromIdx === -1 || toIdx === -1) return true;
@@ -52,7 +53,7 @@ export async function refreshFixtureResults(pollaId: string) {
     .from('matches')
     .select('id, api_football_id, status, scheduled_at, points_calculated')
     .eq('tournament_id', polla.tournament_id)
-    .in('status', ['FT', 'AFT'])
+    .in('status', TERMINAL_MATCH_STATUSES as unknown as string[])
     .eq('points_calculated', false);
 
   const toSync = [...(overdueMatches || []), ...(liveMatches || [])];
@@ -102,7 +103,7 @@ export async function refreshFixtureResults(pollaId: string) {
             results.errors.push(`Update match ${match.id}: ${updateError.message}`);
           } else {
             results.synced++;
-            if (newStatus === 'FT' || newStatus === 'AFT') {
+            if (isMatchTerminal(newStatus)) {
               toCalculate.push(match.id);
             }
           }

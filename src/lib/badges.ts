@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin';
+import { isMatchTerminal } from '@/lib/match-status';
 
 export const BADGE_DEFINITIONS = {
   streak_result_3: { id: 'streak_result_3', label: '🔥 En racha', description: '3 aciertos seguidos', tier: 'bronze' },
@@ -143,7 +144,7 @@ export async function calculateAndUpdateStreaks(pollaId: string, userId: string)
       };
     })
     .filter((p) =>
-      (p._status === 'FT' || p._status === 'AFT') &&
+      isMatchTerminal(p._status) &&
       p.pred_home >= 0 && p.pred_away >= 0 &&
       p.real_home >= 0 && p.real_away >= 0
     )
