@@ -289,6 +289,37 @@ async function runSync() {
     for (const p of pollas || []) if (p.id) affectedPollaIds.add(p.id);
   }
 
+  // FIX RAÍZ: orphan detection. Si una polla tiene predicciones en un match
+  // terminal pero NO tiene match_points para ese par (polla, match), agregar
+  // al set. Independiente del flag global → recupera cualquier polla que
+  // haya quedado fuera por timeouts o race conditions previos.
+  // Cero impacto si no hay orphans (el set diff devuelve vacío).
+  try {
+    const [terminalRes, predsRes, mpRes] = await Promise.all([
+      admin
+        .from('matches')
+        .select('id')
+        .in('status', TERMINAL_MATCH_STATUSES as unknown as string[])
+        .range(0, 9999),
+      admin.from('predictions').select('polla_id, match_id').range(0, 9999),
+      admin.from('match_points').select('polla_id, match_id').range(0, 9999),
+    ]);
+
+    const terminalIds = new Set((terminalRes.data || []).map((m) => m.id));
+    const doneKeys = new Set(
+      (mpRes.data || []).map((r: any) => `${r.polla_id}|${r.match_id}`)
+    );
+
+    for (const p of predsRes.data || []) {
+      if (!terminalIds.has((p as any).match_id)) continue;
+      const key = `${(p as any).polla_id}|${(p as any).match_id}`;
+      if (doneKeys.has(key)) continue;
+      affectedPollaIds.add((p as any).polla_id);
+    }
+  } catch (err: any) {
+    results.errors.push(`Orphan detection: ${err.message}`);
+  }
+
   const batchPromises: Promise<void>[] = [];
   for (const pollaId of Array.from(affectedPollaIds)) {
     batchPromises.push(
