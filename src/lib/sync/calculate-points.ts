@@ -450,21 +450,32 @@ export async function batchCalculateMatchPoints(pollaId: string): Promise<BatchR
     return { skipped: true, reason: 'No hay partidos terminados en este torneo' };
   }
 
-  const { data: existingMp } = await admin
-    .from('match_points')
-    .select('match_id')
-    .eq('polla_id', pollaId);
-  const alreadyDone = new Set((existingMp || []).map((r) => r.match_id));
+  const [existingMpRes, allPredsRes] = await Promise.all([
+    admin.from('match_points').select('match_id').eq('polla_id', pollaId),
+    admin.from('predictions').select('match_id').eq('polla_id', pollaId),
+  ]);
+  const alreadyDone = new Set((existingMpRes.data || []).map((r) => r.match_id));
+  const predMatchIds = new Set((allPredsRes.data || []).map((r) => r.match_id));
 
-  const matches = allFtMatches.filter((m) => !alreadyDone.has(m.id));
+  // Solo procesar matches que:
+  //  (a) ya están terminados (allFtMatches);
+  //  (b) esta polla NO los tenga ya en match_points;
+  //  (c) la polla TIENE al menos 1 predicción en ese match.
+  //
+  // Sin (c), una polla con 1 predicción en un torneo de 300 FT iteraba
+  // 300 veces — fan-out × 17 pollas = 504 timeout (bug 2026-06-29).
+  // Matches sin predicciones para ESTA polla no necesitan match_points;
+  // se ignoran. El flag global points_calculated lo maneja otra polla
+  // que sí tenga preds, o queda en false (inofensivo: otra ronda lo evalúa).
+  const matches = allFtMatches.filter(
+    (m) => !alreadyDone.has(m.id) && predMatchIds.has(m.id)
+  );
 
   if (matches.length === 0) {
-    // Asegurar flag global true para los matches FT (en caso de drift)
-    await admin
-      .from('matches')
-      .update({ points_calculated: true })
-      .in('id', allFtMatches.map((m) => m.id));
-    return { skipped: true, reason: 'Polla ya tiene match_points para todos los FT' };
+    return {
+      skipped: true,
+      reason: 'Polla sin matches nuevos con predicciones',
+    };
   }
 
   const matchIds = matches.map((m) => m.id);
