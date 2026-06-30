@@ -293,28 +293,47 @@ async function runSync() {
   // terminal pero NO tiene match_points para ese par (polla, match), agregar
   // al set. Independiente del flag global → recupera cualquier polla que
   // haya quedado fuera por timeouts o race conditions previos.
-  // Cero impacto si no hay orphans (el set diff devuelve vacío).
+  //
+  // PostgREST tope ~1000 rows por SELECT (no respeta range hasta 9999).
+  // Paginamos para no perder filas (predictions = 3500+, match_points = 3300+).
+  async function fetchAllRows<T>(
+    builder: () => any,
+    pageSize = 1000
+  ): Promise<T[]> {
+    const all: T[] = [];
+    let offset = 0;
+    while (true) {
+      const { data, error } = await builder().range(offset, offset + pageSize - 1);
+      if (error) throw error;
+      if (!data || data.length === 0) break;
+      all.push(...data);
+      if (data.length < pageSize) break;
+      offset += pageSize;
+    }
+    return all;
+  }
+
   try {
-    const [terminalRes, predsRes, mpRes] = await Promise.all([
-      admin
-        .from('matches')
-        .select('id')
-        .in('status', TERMINAL_MATCH_STATUSES as unknown as string[])
-        .range(0, 9999),
-      admin.from('predictions').select('polla_id, match_id').range(0, 9999),
-      admin.from('match_points').select('polla_id, match_id').range(0, 9999),
+    const [terminalRows, predRows, mpRows] = await Promise.all([
+      fetchAllRows<{ id: string }>(() =>
+        admin.from('matches').select('id').in('status', TERMINAL_MATCH_STATUSES as unknown as string[])
+      ),
+      fetchAllRows<{ polla_id: string; match_id: string }>(() =>
+        admin.from('predictions').select('polla_id, match_id')
+      ),
+      fetchAllRows<{ polla_id: string; match_id: string }>(() =>
+        admin.from('match_points').select('polla_id, match_id')
+      ),
     ]);
 
-    const terminalIds = new Set((terminalRes.data || []).map((m) => m.id));
-    const doneKeys = new Set(
-      (mpRes.data || []).map((r: any) => `${r.polla_id}|${r.match_id}`)
-    );
+    const terminalIds = new Set(terminalRows.map((m) => m.id));
+    const doneKeys = new Set(mpRows.map((r) => `${r.polla_id}|${r.match_id}`));
 
-    for (const p of predsRes.data || []) {
-      if (!terminalIds.has((p as any).match_id)) continue;
-      const key = `${(p as any).polla_id}|${(p as any).match_id}`;
+    for (const p of predRows) {
+      if (!terminalIds.has(p.match_id)) continue;
+      const key = `${p.polla_id}|${p.match_id}`;
       if (doneKeys.has(key)) continue;
-      affectedPollaIds.add((p as any).polla_id);
+      affectedPollaIds.add(p.polla_id);
     }
   } catch (err: any) {
     results.errors.push(`Orphan detection: ${err.message}`);

@@ -450,12 +450,33 @@ export async function batchCalculateMatchPoints(pollaId: string): Promise<BatchR
     return { skipped: true, reason: 'No hay partidos terminados en este torneo' };
   }
 
-  const [existingMpRes, allPredsRes] = await Promise.all([
-    admin.from('match_points').select('match_id').eq('polla_id', pollaId),
-    admin.from('predictions').select('match_id').eq('polla_id', pollaId),
+  // Paginar: PostgREST tope ~1000 rows. Pollas grandes (1620 preds en
+  // CNWFT9) eran truncadas → predMatchIds set incompleto → orphans
+  // permanentes. Mismo problema con match_points por polla en pollas
+  // antiguas con muchas filas.
+  async function fetchAllMatchIds(table: 'match_points' | 'predictions'): Promise<Set<string>> {
+    const out = new Set<string>();
+    const pageSize = 1000;
+    let offset = 0;
+    while (true) {
+      const { data, error } = await admin
+        .from(table)
+        .select('match_id')
+        .eq('polla_id', pollaId)
+        .range(offset, offset + pageSize - 1);
+      if (error) throw error;
+      if (!data || data.length === 0) break;
+      for (const r of data) out.add(r.match_id);
+      if (data.length < pageSize) break;
+      offset += pageSize;
+    }
+    return out;
+  }
+
+  const [alreadyDone, predMatchIds] = await Promise.all([
+    fetchAllMatchIds('match_points'),
+    fetchAllMatchIds('predictions'),
   ]);
-  const alreadyDone = new Set((existingMpRes.data || []).map((r) => r.match_id));
-  const predMatchIds = new Set((allPredsRes.data || []).map((r) => r.match_id));
 
   // Solo procesar matches que:
   //  (a) ya están terminados (allFtMatches);
