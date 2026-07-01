@@ -469,8 +469,8 @@ export async function loadFixtures(pollaId: string, selectedRounds?: string[]) {
       api_football_id: f.fixture?.id ?? null,
       home_team_id: existingMap.get(f.teams?.home?.id) ?? null,
       away_team_id: existingMap.get(f.teams?.away?.id) ?? null,
-      home_goals: isFinished ? f.goals?.home ?? null : null,
-      away_goals: isFinished ? f.goals?.away ?? null : null,
+      home_goals: isFinished ? (f.score?.fulltime?.home ?? f.goals?.home ?? null) : null,
+      away_goals: isFinished ? (f.score?.fulltime?.away ?? f.goals?.away ?? null) : null,
       home_penalty_goals: isFinished ? f.score?.penalty?.home ?? null : null,
       away_penalty_goals: isFinished ? f.score?.penalty?.away ?? null : null,
       status,
@@ -650,8 +650,8 @@ export async function syncFixtures(pollaId: string, selectedRounds?: string[]) {
         api_football_id: f.fixture?.id ?? null,
         home_team_id: existingTeamMap.get(f.teams?.home?.id) ?? null,
         away_team_id: existingTeamMap.get(f.teams?.away?.id) ?? null,
-        home_goals: isFinished ? f.goals?.home ?? null : null,
-        away_goals: isFinished ? f.goals?.away ?? null : null,
+        home_goals: isFinished ? (f.score?.fulltime?.home ?? f.goals?.home ?? null) : null,
+        away_goals: isFinished ? (f.score?.fulltime?.away ?? f.goals?.away ?? null) : null,
         home_penalty_goals: isFinished ? f.score?.penalty?.home ?? null : null,
         away_penalty_goals: isFinished ? f.score?.penalty?.away ?? null : null,
         status,
@@ -673,8 +673,8 @@ export async function syncFixtures(pollaId: string, selectedRounds?: string[]) {
     const isFinished = TERMINAL_STATUSES.has(apiStatus || '');
     const updatePayload: Record<string, any> = {
       status: apiStatus,
-      home_goals: isFinished ? f.goals?.home ?? null : null,
-      away_goals: isFinished ? f.goals?.away ?? null : null,
+      home_goals: isFinished ? (f.score?.fulltime?.home ?? f.goals?.home ?? null) : null,
+      away_goals: isFinished ? (f.score?.fulltime?.away ?? f.goals?.away ?? null) : null,
       home_penalty_goals: isFinished ? f.score?.penalty?.home ?? null : null,
       away_penalty_goals: isFinished ? f.score?.penalty?.away ?? null : null,
     };

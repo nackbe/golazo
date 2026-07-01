@@ -31,8 +31,15 @@ function updateMatchFromFixture(
   fixture: any
 ): Promise<{ error: any }> {
   const newStatus = fixture.fixture?.status?.short;
-  const homeGoals = fixture.goals?.home ?? null;
-  const awayGoals = fixture.goals?.away ?? null;
+  // CRÍTICO: para AET/PEN, API-Football devuelve en `goals` el marcador
+  // final tras ET (Belgium-Senegal 3-2 = 2-2 + 1-0 en ET). Predicciones
+  // se validan contra los 90 minutos → usar score.fulltime siempre que
+  // esté disponible. Fallback a goals solo si fulltime es null (matches
+  // en vivo aún no cerrados).
+  const ftHome = fixture.score?.fulltime?.home;
+  const ftAway = fixture.score?.fulltime?.away;
+  const homeGoals = ftHome ?? fixture.goals?.home ?? null;
+  const awayGoals = ftAway ?? fixture.goals?.away ?? null;
   const homePenaltyGoals = fixture.score?.penalty?.home ?? null;
   const awayPenaltyGoals = fixture.score?.penalty?.away ?? null;
   // scheduled_at se actualiza para mantener consistencia (e.g. reagendamientos

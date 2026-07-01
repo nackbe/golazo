@@ -175,13 +175,17 @@ async function runFixtureSync() {
       const matchesToInsert = newFixtures.map((f: any) => {
         const apiStatus = f.fixture?.status?.short;
         const isFinished = isMatchTerminal(apiStatus);
+        // score.fulltime = marcador a 90 min (usado para scoring).
+        // f.goals incluye ET para AET → usar fulltime cuando esté.
+        const ftHome = f.score?.fulltime?.home;
+        const ftAway = f.score?.fulltime?.away;
         return {
           tournament_id: tournamentId,
           api_football_id: f.fixture?.id ?? null,
           home_team_id: existingTeamMap.get(f.teams?.home?.id) ?? null,
           away_team_id: existingTeamMap.get(f.teams?.away?.id) ?? null,
-          home_goals: isFinished ? f.goals?.home ?? null : null,
-          away_goals: isFinished ? f.goals?.away ?? null : null,
+          home_goals: isFinished ? (ftHome ?? f.goals?.home ?? null) : null,
+          away_goals: isFinished ? (ftAway ?? f.goals?.away ?? null) : null,
           home_penalty_goals: isFinished ? f.score?.penalty?.home ?? null : null,
           away_penalty_goals: isFinished ? f.score?.penalty?.away ?? null : null,
           status: apiStatus || 'NS',
