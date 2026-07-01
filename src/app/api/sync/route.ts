@@ -90,16 +90,17 @@ async function runSync() {
   // 1. Leer estado actual de la BD (en paralelo)
   // ─────────────────────────────────────────
 
-  // Status "fantasma": INT (Interrupted), SUSP (Suspended), BT (Break Time).
-  // Si el match se reanuda y termina FT, API-Football lo deja fuera de
-  // live=all → el cron debe incluirlos en previousLiveMatches para
+  // Status "fantasma": INT/SUSP/BT (interrupciones) + PST/TBD (postponed
+  // reagendado). Si el match se reanuda y termina FT, API-Football lo deja
+  // fuera de live=all → el cron debe incluirlos en previousLiveMatches para
   // detectar via 'disappeared' path y consultar getFixturesByIds.
-  // Sin esto, el match queda atascado eternamente (bug France-Iraq 2026-06-22).
+  // Sin esto el match queda atascado eternamente. Bugs observados:
+  //   France-Iraq 2026-06-22 (INT), Mexico-Ecuador 2026-06-30 (PST reagendado).
   const [previousLiveMatchesRes, overdueMatchesRes] = await Promise.all([
     admin
       .from('matches')
       .select('id, api_football_id, status, tournament_id')
-      .in('status', ['1H', 'HT', '2H', 'ET', 'P', 'BT', 'INT', 'SUSP']),
+      .in('status', ['1H', 'HT', '2H', 'ET', 'P', 'BT', 'INT', 'SUSP', 'PST', 'TBD']),
     admin
       .from('matches')
       .select('id, api_football_id, status, scheduled_at, tournament_id')
