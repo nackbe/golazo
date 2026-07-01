@@ -441,7 +441,7 @@ export async function batchCalculateMatchPoints(pollaId: string): Promise<BatchR
   // entre pollas, cero reprocesamiento, snapshots correctos.
   const { data: allFtMatches } = await admin
     .from('matches')
-    .select('id, home_goals, away_goals, round, scheduled_at')
+    .select('id, home_goals, away_goals, round, scheduled_at, points_calculated')
     .eq('tournament_id', polla.tournament_id)
     .in('status', TERMINAL_MATCH_STATUSES as unknown as string[])
     .order('scheduled_at', { ascending: true });
@@ -480,16 +480,20 @@ export async function batchCalculateMatchPoints(pollaId: string): Promise<BatchR
 
   // Solo procesar matches que:
   //  (a) ya están terminados (allFtMatches);
-  //  (b) esta polla NO los tenga ya en match_points;
+  //  (b) [nuevo] esta polla NO los tenga ya en match_points, O el flag
+  //      global points_calculated=false (goles corregidos, hay que
+  //      recomputar aunque ya haya match_points);
   //  (c) la polla TIENE al menos 1 predicción en ese match.
   //
-  // Sin (c), una polla con 1 predicción en un torneo de 300 FT iteraba
-  // 300 veces — fan-out × 17 pollas = 504 timeout (bug 2026-06-29).
-  // Matches sin predicciones para ESTA polla no necesitan match_points;
-  // se ignoran. El flag global points_calculated lo maneja otra polla
-  // que sí tenga preds, o queda en false (inofensivo: otra ronda lo evalúa).
+  // El caso (b)-forzado cubre: cuando corregimos manualmente
+  // home_goals/away_goals de un match y flipeamos calc=false (bug
+  // Belgium-Senegal 2026-07-01 — API-Football goals incluía ET),
+  // TODAS las pollas con predicciones deben recomputar puntos con el
+  // marcador nuevo. UPSERT idempotente sobrescribe con valores nuevos.
   const matches = allFtMatches.filter(
-    (m) => !alreadyDone.has(m.id) && predMatchIds.has(m.id)
+    (m) =>
+      predMatchIds.has(m.id) &&
+      (!alreadyDone.has(m.id) || (m as any).points_calculated === false)
   );
 
   if (matches.length === 0) {
