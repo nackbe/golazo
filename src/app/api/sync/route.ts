@@ -370,28 +370,77 @@ async function runSync() {
   await Promise.all(batchPromises);
 
   // ─────────────────────────────────────────
-  // 7. Calcular predicciones especiales
+  // 7. Predicciones especiales — solo si un torneo terminó
   // ─────────────────────────────────────────
-
-  const specialPromises: Promise<void>[] = [];
-  for (const tournamentId of Array.from(allTournamentIds)) {
-    specialPromises.push(
-      updateTournamentSpecialResults(tournamentId).catch((err: any) => {
-        results.errors.push(`Special results ${tournamentId}: ${err.message}`);
-      })
-    );
-  }
-  await Promise.all(specialPromises);
+  // Specials (champion, finalist, 3er lugar, top scorer team, worst team, etc.)
+  // se materializan al final del torneo. calculateSpecialPoints ya tiene un gate
+  // interno (pendingCount>0 → skip), pero igual paga el COUNT por cada polla
+  // afectada cada cron. updateTournamentSpecialResults NO tenía gate y escaneaba
+  // matches por cada torneo activo. Cortamos ambos aquí antes de gastar queries:
+  // 1 query descubre qué torneos tienen partidos pendientes; el resto ni se toca.
 
   let specialCalculated = 0;
-  for (const pollaId of Array.from(affectedPollaIds)) {
-    try {
-      const specialResult = await calculateSpecialPoints(pollaId);
-      if ('processed' in specialResult && (specialResult.processed ?? 0) > 0) {
-        specialCalculated++;
+  const affectedArr = Array.from(affectedPollaIds);
+
+  if (affectedArr.length > 0) {
+    const { data: pollasWithTournament } = await admin
+      .from('pollas')
+      .select('id, tournament_id')
+      .in('id', affectedArr);
+
+    const uniqTids = Array.from(
+      new Set(
+        (pollasWithTournament || [])
+          .map((p) => p.tournament_id)
+          .filter((t): t is string => !!t)
+      )
+    );
+
+    if (uniqTids.length > 0) {
+      const { data: pendingRows } = await admin
+        .from('matches')
+        .select('tournament_id')
+        .in('tournament_id', uniqTids)
+        .not('status', 'in', '(FT,AFT,AET,PEN,CANC,ABD,AWD,WO)');
+      const withPending = new Set(
+        (pendingRows || []).map((m) => m.tournament_id).filter(Boolean) as string[]
+      );
+      const finishedTournaments = new Set(
+        uniqTids.filter((t) => !withPending.has(t))
+      );
+
+      if (finishedTournaments.size > 0) {
+        await Promise.all(
+          Array.from(finishedTournaments).map((t) =>
+            updateTournamentSpecialResults(t).catch((err: any) => {
+              results.errors.push(`Special results ${t}: ${err.message}`);
+            })
+          )
+        );
+
+        const pollasToSpecial = (pollasWithTournament || [])
+          .filter(
+            (p) =>
+              p.tournament_id &&
+              finishedTournaments.has(p.tournament_id as string)
+          )
+          .map((p) => p.id);
+
+        const specialResults = await Promise.all(
+          pollasToSpecial.map((pid) =>
+            calculateSpecialPoints(pid).catch((err: any) => {
+              results.errors.push(`Special points ${pid}: ${err.message}`);
+              return null;
+            })
+          )
+        );
+
+        for (const r of specialResults) {
+          if (r && 'processed' in r && (r.processed ?? 0) > 0) {
+            specialCalculated++;
+          }
+        }
       }
-    } catch (err: any) {
-      results.errors.push(`Special points ${pollaId}: ${err.message}`);
     }
   }
 
