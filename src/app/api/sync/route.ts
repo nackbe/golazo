@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { TERMINAL_MATCH_STATUSES, isMatchTerminal } from '@/lib/match-status';
+import { isExcludedPolla } from '@/lib/excluded-pollas';
 import { getLiveFixtures, getFixturesByIds } from '@/services/api-football';
 import { batchCalculateMatchPoints, updateTournamentSpecialResults, calculateSpecialPoints } from '@/lib/sync/calculate-points';
 import { generateRandomPredictionsForMatch } from '@/lib/sync/random-predictions';
@@ -251,6 +252,7 @@ async function runSync() {
       .in('status', ['active', 'open']);
 
     for (const polla of pollasWithRandom || []) {
+      if (isExcludedPolla(polla.id)) continue;
       randomPredPromises.push(
         generateRandomPredictionsForMatch(match.id, polla.id).catch((err: any) => {
           results.errors.push(`Random predictions ${match.id}/${polla.id}: ${err.message}`);
@@ -268,13 +270,16 @@ async function runSync() {
 
   const affectedPollaIds = new Set<string>();
 
-  // Encontrar pollas afectadas por los torneos con cambios
+  // Encontrar pollas afectadas por los torneos con cambios.
+  // Excluir pollas test/demo (EXCLUDED_POLLA_IDS) para no cargar el cron.
   for (const tournamentId of Array.from(allTournamentIds)) {
     const { data: pollas } = await admin
       .from('pollas')
       .select('id')
       .eq('tournament_id', tournamentId);
-    for (const p of pollas || []) if (p.id) affectedPollaIds.add(p.id);
+    for (const p of pollas || []) {
+      if (p.id && !isExcludedPolla(p.id)) affectedPollaIds.add(p.id);
+    }
   }
 
   // También buscar pollas que tengan cualquier partido terminado sin calcular
@@ -294,7 +299,9 @@ async function runSync() {
       .from('pollas')
       .select('id')
       .eq('tournament_id', tournamentId);
-    for (const p of pollas || []) if (p.id) affectedPollaIds.add(p.id);
+    for (const p of pollas || []) {
+      if (p.id && !isExcludedPolla(p.id)) affectedPollaIds.add(p.id);
+    }
   }
 
   // FIX RAÍZ: orphan detection. Si una polla tiene predicciones en un match
@@ -338,6 +345,7 @@ async function runSync() {
     const doneKeys = new Set(mpRows.map((r) => `${r.polla_id}|${r.match_id}`));
 
     for (const p of predRows) {
+      if (isExcludedPolla(p.polla_id)) continue;
       if (!terminalIds.has(p.match_id)) continue;
       const key = `${p.polla_id}|${p.match_id}`;
       if (doneKeys.has(key)) continue;
