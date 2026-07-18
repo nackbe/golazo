@@ -171,14 +171,18 @@ export interface TournamentMatch {
 }
 
 export interface TournamentStats {
-  least_goals_against: string | null;
-  worst_team: string | null;
-  top_scorer_team: string | null;
+  // Arrays porque múltiples equipos pueden empatar en el valor extremo.
+  // Ej: 3 equipos con 10 goles a favor en fase de grupos → los 3 ganan
+  // top_scorer_team. Predicción acierta si el team_id predicho está en el array.
+  least_goals_against: string[];
+  worst_team: string[];
+  top_scorer_team: string[];
 }
 
 /**
  * Calcula estadísticas de torneo (menos goles en contra, peor equipo, máximo goleador)
- * a partir de partidos terminados. Función pura.
+ * a partir de partidos terminados. Función pura. Devuelve arrays para soportar
+ * empates: si N equipos tienen el mismo valor extremo, los N son ganadores.
  */
 export function calculateTournamentStatsFromMatches(
   matches: TournamentMatch[]
@@ -205,31 +209,33 @@ export function calculateTournamentStatsFromMatches(
   }
 
   if (stats.size === 0) {
-    return { least_goals_against: null, worst_team: null, top_scorer_team: null };
+    return { least_goals_against: [], worst_team: [], top_scorer_team: [] };
   }
 
-  let leastGaTeam: string | null = null;
-  let leastGa = Infinity;
-  let worstTeam: string | null = null;
-  let worstDiff = Infinity;
-  let topScorerTeam: string | null = null;
-  let topGf = -Infinity;
-
-  for (const [teamId, s] of Array.from(stats.entries())) {
-    if (s.ga < leastGa) {
-      leastGa = s.ga;
-      leastGaTeam = teamId;
-    }
+  // 1a pasada: valores extremos.
+  let minGa = Infinity;
+  let minDiff = Infinity;
+  let maxGf = -Infinity;
+  for (const s of Array.from(stats.values())) {
+    if (s.ga < minGa) minGa = s.ga;
     const diff = s.gf - s.ga;
-    if (diff < worstDiff) {
-      worstDiff = diff;
-      worstTeam = teamId;
-    }
-    if (s.gf > topGf) {
-      topGf = s.gf;
-      topScorerTeam = teamId;
-    }
+    if (diff < minDiff) minDiff = diff;
+    if (s.gf > maxGf) maxGf = s.gf;
   }
 
-  return { least_goals_against: leastGaTeam, worst_team: worstTeam, top_scorer_team: topScorerTeam };
+  // 2a pasada: colectar todos los teams que igualan cada extremo.
+  const leastGoalsAgainst: string[] = [];
+  const worstTeam: string[] = [];
+  const topScorerTeam: string[] = [];
+  for (const [teamId, s] of Array.from(stats.entries())) {
+    if (s.ga === minGa) leastGoalsAgainst.push(teamId);
+    if (s.gf - s.ga === minDiff) worstTeam.push(teamId);
+    if (s.gf === maxGf) topScorerTeam.push(teamId);
+  }
+
+  return {
+    least_goals_against: leastGoalsAgainst,
+    worst_team: worstTeam,
+    top_scorer_team: topScorerTeam,
+  };
 }

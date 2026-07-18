@@ -295,10 +295,36 @@ export async function calculateMatchPoints(matchId: string) {
 export async function updateTournamentSpecialResults(tournamentId: string) {
   const admin = createAdminClient();
 
+  // Resolver ganador de un partido de eliminatoria considerando penales.
+  // home_goals/away_goals guardan marcador a 90 min (por design: predicciones
+  // se validan contra 90'). Cuando status='PEN' hay empate en 90' → desempate
+  // por penales en home_penalty_goals/away_penalty_goals. Sin esta lógica,
+  // una final por penales dejaba winner=null → nunca se asignaba champion/finalist.
+  function decideKnockoutWinner(m: {
+    home_team_id: string | null;
+    away_team_id: string | null;
+    home_goals: number | null;
+    away_goals: number | null;
+    home_penalty_goals: number | null;
+    away_penalty_goals: number | null;
+    status: string | null;
+  }): { winner: string | null; loser: string | null } {
+    const hg = m.home_goals, ag = m.away_goals;
+    if (hg === null || ag === null) return { winner: null, loser: null };
+    if (hg > ag) return { winner: m.home_team_id, loser: m.away_team_id };
+    if (ag > hg) return { winner: m.away_team_id, loser: m.home_team_id };
+    // Empate 90'. Solo desempata si status=PEN + penales presentes.
+    if (m.status === 'PEN' && m.home_penalty_goals != null && m.away_penalty_goals != null) {
+      if (m.home_penalty_goals > m.away_penalty_goals) return { winner: m.home_team_id, loser: m.away_team_id };
+      if (m.away_penalty_goals > m.home_penalty_goals) return { winner: m.away_team_id, loser: m.home_team_id };
+    }
+    return { winner: null, loser: null };
+  }
+
   // 1. Buscar partido de final
   const { data: finalMatches } = await admin
     .from('matches')
-    .select('id, home_team_id, away_team_id, home_goals, away_goals, status, round')
+    .select('id, home_team_id, away_team_id, home_goals, away_goals, home_penalty_goals, away_penalty_goals, status, round')
     .eq('tournament_id', tournamentId)
     .in('status', TERMINAL_MATCH_STATUSES as unknown as string[])
     .ilike('round', '%Final%');
@@ -308,16 +334,8 @@ export async function updateTournamentSpecialResults(tournamentId: string) {
     (m) => m.round && (m.round.toLowerCase() === 'final' || m.round.toLowerCase() === 'grand final')
   );
 
-  if (finalMatch && finalMatch.home_goals !== null && finalMatch.away_goals !== null) {
-    const winner = finalMatch.home_goals > finalMatch.away_goals
-      ? finalMatch.home_team_id
-      : finalMatch.away_goals > finalMatch.home_goals
-        ? finalMatch.away_team_id
-        : null; // Empate en final → penalty (no manejamos penalty shootout en este MVP)
-
-    const loser = winner === finalMatch.home_team_id
-      ? finalMatch.away_team_id
-      : finalMatch.home_team_id;
+  if (finalMatch) {
+    const { winner, loser } = decideKnockoutWinner(finalMatch);
 
     if (winner) {
       await admin
@@ -340,18 +358,14 @@ export async function updateTournamentSpecialResults(tournamentId: string) {
   // 2. Buscar partido de 3er lugar
   const { data: thirdMatches } = await admin
     .from('matches')
-    .select('id, home_team_id, away_team_id, home_goals, away_goals, status, round')
+    .select('id, home_team_id, away_team_id, home_goals, away_goals, home_penalty_goals, away_penalty_goals, status, round')
     .eq('tournament_id', tournamentId)
     .in('status', TERMINAL_MATCH_STATUSES as unknown as string[])
     .or('round.ilike.%3rd%,round.ilike.%Third%,round.ilike.%3er%');
 
   const thirdMatch = (thirdMatches || [])[0];
-  if (thirdMatch && thirdMatch.home_goals !== null && thirdMatch.away_goals !== null) {
-    const thirdWinner = thirdMatch.home_goals > thirdMatch.away_goals
-      ? thirdMatch.home_team_id
-      : thirdMatch.away_goals > thirdMatch.home_goals
-        ? thirdMatch.away_team_id
-        : null;
+  if (thirdMatch) {
+    const { winner: thirdWinner } = decideKnockoutWinner(thirdMatch);
 
     if (thirdWinner) {
       await admin
@@ -363,51 +377,35 @@ export async function updateTournamentSpecialResults(tournamentId: string) {
     }
   }
 
-  // 3. Calcular stats-based solo si el torneo tiene suficientes partidos terminados
-  await calculateTournamentStats(tournamentId);
+  // Stats-based (top_scorer_team, worst_team, least_goals_against) NO se
+  // persisten en tournament_special_results: se calculan on-the-fly desde
+  // los partidos de fase de grupos en calculateSpecialPoints, y devuelven
+  // arrays de ganadores para soportar empates (múltiples equipos con el
+  // mismo valor extremo). Ese schema tiene UNIQUE(tournament_id, type) →
+  // no cabe multi-row, por eso el cómputo se mueve al validador.
 }
 
 /**
- * Calcula estadísticas del torneo (goles a favor, en contra, diferencia) desde los partidos terminados.
- * Guarda los resultados en tournament_special_results para least_goals_against, worst_team, top_scorer_team.
+ * Devuelve stats derivadas de partidos de FASE DE GRUPOS únicamente.
+ * Empates → múltiples ganadores por tipo (arrays).
+ *
+ * Solo grupos por diseño: los premios "goleador", "menos goleado" y "peor
+ * equipo" se congelan al terminar la fase de grupos y no cambian por lo que
+ * pase en eliminatorias. Sumando eliminatorias las estadísticas se ensucian
+ * (equipos que juegan más partidos tienen ventaja acumulativa).
  */
-async function calculateTournamentStats(tournamentId: string) {
+async function fetchGroupStageStats(tournamentId: string) {
   const admin = createAdminClient();
-
   const { data: matches } = await admin
     .from('matches')
     .select('home_team_id, away_team_id, home_goals, away_goals, status')
     .eq('tournament_id', tournamentId)
+    .ilike('round', 'Group Stage%')
     .in('status', TERMINAL_MATCH_STATUSES as unknown as string[]);
 
-  if (!matches || matches.length < 2) return; // Muy pocos partidos para stats significativas
-
-  const stats = calculateTournamentStatsFromMatches(matches as import('@/lib/scoring').TournamentMatch[]);
-
-  if (stats.least_goals_against) {
-    await admin
-      .from('tournament_special_results')
-      .upsert(
-        { tournament_id: tournamentId, type: 'least_goals_against', team_id: stats.least_goals_against },
-        { onConflict: 'tournament_id, type' }
-      );
-  }
-  if (stats.worst_team) {
-    await admin
-      .from('tournament_special_results')
-      .upsert(
-        { tournament_id: tournamentId, type: 'worst_team', team_id: stats.worst_team },
-        { onConflict: 'tournament_id, type' }
-      );
-  }
-  if (stats.top_scorer_team) {
-    await admin
-      .from('tournament_special_results')
-      .upsert(
-        { tournament_id: tournamentId, type: 'top_scorer_team', team_id: stats.top_scorer_team },
-        { onConflict: 'tournament_id, type' }
-      );
-  }
+  return calculateTournamentStatsFromMatches(
+    (matches || []) as import('@/lib/scoring').TournamentMatch[]
+  );
 }
 
 /**
@@ -643,17 +641,30 @@ export async function calculateSpecialPoints(pollaId: string) {
     return { skipped: true, reason: `Torneo en curso (${pendingCount} partidos pendientes)` };
   }
 
-  // 2. Obtener resultados reales del torneo
-  const { data: results } = await admin
-    .from('tournament_special_results')
-    .select('type, team_id')
-    .eq('tournament_id', polla.tournament_id);
+  // 2. Cargar ganadores reales.
+  //   - champion/finalist/third_place: 1 equipo por tipo → viene de
+  //     tournament_special_results (upserteado por updateTournamentSpecialResults).
+  //   - top_scorer_team/worst_team/least_goals_against: N equipos por tipo
+  //     (empates) → se calculan on-the-fly SOLO sobre partidos de fase de
+  //     grupos. Predicción acierta si el team_id predicho está en el set.
+  const [{ data: results }, groupStats] = await Promise.all([
+    admin
+      .from('tournament_special_results')
+      .select('type, team_id')
+      .eq('tournament_id', polla.tournament_id),
+    fetchGroupStageStats(polla.tournament_id),
+  ]);
 
-  if (!results || results.length === 0) {
-    return { skipped: true, reason: 'No hay resultados especiales para este torneo' };
+  // Set de ganadores por tipo (para O(1) lookup).
+  const winnersByType = new Map<string, Set<string>>();
+  for (const r of results || []) {
+    if (!r.team_id) continue;
+    if (!winnersByType.has(r.type)) winnersByType.set(r.type, new Set());
+    winnersByType.get(r.type)!.add(r.team_id);
   }
-
-  const resultMap = new Map(results.map((r) => [r.type, r.team_id]));
+  winnersByType.set('top_scorer_team', new Set(groupStats.top_scorer_team));
+  winnersByType.set('worst_team', new Set(groupStats.worst_team));
+  winnersByType.set('least_goals_against', new Set(groupStats.least_goals_against));
 
   // 3. Obtener predicciones de miembros aprobados
   const { data: predictions } = await admin
@@ -668,10 +679,11 @@ export async function calculateSpecialPoints(pollaId: string) {
   let processed = 0;
 
   for (const pred of predictions) {
-    const actualTeamId = resultMap.get(pred.type);
-    if (!actualTeamId) continue; // No hay resultado real para este tipo todavía
+    const winners = winnersByType.get(pred.type);
+    if (!winners || winners.size === 0) continue; // sin resultado aún
 
-    const points = pred.team_id === actualTeamId ? (sps[pred.type as keyof SpecialPointSystem] || 0) : 0;
+    const isHit = pred.team_id ? winners.has(pred.team_id) : false;
+    const points = isHit ? (sps[pred.type as keyof SpecialPointSystem] || 0) : 0;
 
     // Actualizar points en special_predictions (idempotente)
     const { error: updateError } = await admin

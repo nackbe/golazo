@@ -244,23 +244,23 @@ describe('scoreMatchPrediction', () => {
 });
 
 describe('calculateTournamentStatsFromMatches', () => {
-  it('returns nulls when no matches provided', () => {
+  it('returns empty arrays when no matches provided', () => {
     const result = calculateTournamentStatsFromMatches([]);
     expect(result).toEqual({
-      least_goals_against: null,
-      worst_team: null,
-      top_scorer_team: null,
+      least_goals_against: [],
+      worst_team: [],
+      top_scorer_team: [],
     });
   });
 
-  it('returns nulls when all matches have null goals', () => {
+  it('returns empty arrays when all matches have null goals', () => {
     const matches: TournamentMatch[] = [
       { home_team_id: 't1', away_team_id: 't2', home_goals: null, away_goals: null, status: 'FT' },
     ];
     expect(calculateTournamentStatsFromMatches(matches)).toEqual({
-      least_goals_against: null,
-      worst_team: null,
-      top_scorer_team: null,
+      least_goals_against: [],
+      worst_team: [],
+      top_scorer_team: [],
     });
   });
 
@@ -272,7 +272,7 @@ describe('calculateTournamentStatsFromMatches', () => {
     // t1: ga = 0 + 1 = 1
     // t2: ga = 2 + 1 = 3
     const result = calculateTournamentStatsFromMatches(matches);
-    expect(result.least_goals_against).toBe('t1');
+    expect(result.least_goals_against).toEqual(['t1']);
   });
 
   it('calculates worst_team correctly (lowest goal diff)', () => {
@@ -283,7 +283,7 @@ describe('calculateTournamentStatsFromMatches', () => {
     // t1: gf=1, ga=5, diff=-4
     // t2: gf=5, ga=1, diff=+4
     const result = calculateTournamentStatsFromMatches(matches);
-    expect(result.worst_team).toBe('t1');
+    expect(result.worst_team).toEqual(['t1']);
   });
 
   it('calculates top_scorer_team correctly', () => {
@@ -294,10 +294,10 @@ describe('calculateTournamentStatsFromMatches', () => {
     // t1: gf=1+2=3
     // t2: gf=0+4=4
     const result = calculateTournamentStatsFromMatches(matches);
-    expect(result.top_scorer_team).toBe('t2');
+    expect(result.top_scorer_team).toEqual(['t2']);
   });
 
-  it('handles ties by keeping first encountered (stable)', () => {
+  it('returns all tied teams (multiple winners on equal extreme)', () => {
     const matches: TournamentMatch[] = [
       { home_team_id: 't1', away_team_id: 't2', home_goals: 1, away_goals: 1, status: 'FT' },
       { home_team_id: 't2', away_team_id: 't1', home_goals: 1, away_goals: 1, status: 'FT' },
@@ -305,8 +305,9 @@ describe('calculateTournamentStatsFromMatches', () => {
     // t1: gf=2, ga=2, diff=0
     // t2: gf=2, ga=2, diff=0
     const result = calculateTournamentStatsFromMatches(matches);
-    expect(result.worst_team).toBe('t1'); // first encountered with diff=0
-    expect(result.top_scorer_team).toBe('t1'); // first encountered with gf=2
+    expect(result.worst_team.sort()).toEqual(['t1', 't2']);
+    expect(result.top_scorer_team.sort()).toEqual(['t1', 't2']);
+    expect(result.least_goals_against.sort()).toEqual(['t1', 't2']);
   });
 
   it('skips matches with missing team ids', () => {
@@ -315,6 +316,6 @@ describe('calculateTournamentStatsFromMatches', () => {
       { home_team_id: 't1', away_team_id: 't2', home_goals: 1, away_goals: 0, status: 'FT' },
     ];
     const result = calculateTournamentStatsFromMatches(matches);
-    expect(result.least_goals_against).toBe('t1'); // only valid match, t1 has ga=0
+    expect(result.least_goals_against).toEqual(['t1']); // only valid match, t1 has ga=0
   });
 });
